@@ -2,6 +2,7 @@ package adris.altoclef.tasks.entity;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.CombatPreferences;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.SpearHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -87,19 +88,45 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
 
     @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
-        // 长矛走专属 poke 节奏逻辑（接近 → 瞄准 → Charge → 刺 → 后退），
-        // 不套用下方剑的贴脸攻击/半冷却逻辑。
-        if (SpearHelper.isSpear(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()))) {
+        ItemStack hand = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot());
+        CombatPreferences.Style style = CombatPreferences.getStyle();
+
+        // Explicit style asked for by the player/model (altoclef_combat style=...).
+        if (style == CombatPreferences.Style.SPEAR) {
+            Item spear = CombatPreferences.bestSpear(mod);
+            if (SpearHelper.isSpear(hand)) return SpearHelper.tickSpearCombat(mod, entity);
+            if (spear != null) {
+                mod.getSlotHandler().forceEquipItem(spear);
+                return null; // equipping this tick
+            }
+            return meleeAttack(mod, entity); // no spear available
+        }
+        if (style == CombatPreferences.Style.SWORD) {
+            Item weapon = CombatPreferences.bestMeleeWeapon(mod);
+            if (weapon != null && hand.getItem() != weapon) {
+                mod.getSlotHandler().forceEquipItem(weapon);
+                return null; // equipping this tick
+            }
+            return meleeAttack(mod, entity);
+        }
+
+        // AUTO: 长矛走专属 poke 节奏逻辑（接近 → 瞄准 → Charge → 刺 → 后退），
+        // 否则用最强的近战武器（剑式贴脸攻击）。
+        if (SpearHelper.isSpear(hand)) {
             return SpearHelper.tickSpearCombat(mod, entity);
         }
-        // Equip weapon
         if (!equipWeapon(mod)) {
-            float hitProg = mod.getPlayer().getAttackStrengthScale(0);
-            if (hitProg >= 1) {
-                if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y < 0 || mod.getPlayer().isInWater()) {
-                    LookHelper.lookAt(mod, entity.getEyePosition());
-                    mod.getControllerExtras().attack(entity);
-                }
+            return meleeAttack(mod, entity);
+        }
+        return null;
+    }
+
+    private static Task meleeAttack(AltoClef mod, Entity entity) {
+        float hitProg = mod.getPlayer().getAttackStrengthScale(0);
+        if (hitProg >= 1) {
+            if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y < 0 || mod.getPlayer().isInWater()) {
+                LookHelper.lookAt(mod, entity.getEyePosition());
+                mod.getControllerExtras().attack(entity);
             }
         }
         return null;

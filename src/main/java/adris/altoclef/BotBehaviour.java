@@ -286,7 +286,11 @@ public class BotBehaviour {
         public boolean _allowWalkThroughFlowingWater = false;
 
         // Minecraft config
-        public boolean pauseOnLostFocus = true;
+        // A bot instance must keep simulating while the window is unfocused:
+        // vanilla's pause-on-lost-focus opens the pause screen (and pauses
+        // single-player worlds), which silently breaks input-driven actions
+        // such as releasing a drawn bow. Bot owners can press Esc to pause.
+        public boolean pauseOnLostFocus = false;
 
         // Hard coded stuff
         public ClipContext.Fluid rayFluidHandling;

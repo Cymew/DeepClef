@@ -15,6 +15,7 @@ public final class AgentCapabilityCatalog {
 
     private static final String RELATED = "配套既有能力（10/17–18）：玩家先手动上马，已上鞍且实际可控制的马科坐骑由普通 @goto x z、@follow 玩家和相对移动接管，支持斜向、跳跃、坡道；不支持骆驼导航，也没有自动上马、驯服或装鞍工具。"
             + "长矛刺击/冲锋、骑马冲锋和骑乘弓箭由现有战斗/防御任务按装备自动执行。"
+            + "玩家 PvP 用 `@punk <玩家名>`：近距离长矛或剑盾，远距离切弓，被射时举盾走位。"
             + "没有 @ride、@horse、@spear、@bow、@attack 指令，不要编造攻击或实体交互工具。";
 
     private static final String SOCIAL_USAGE = "10/25新增：多人聊天与动态合作。运行@ds任务时会感知新玩家聊天，模型用altoclef_chat的read/status/send查询与回复，"
@@ -62,7 +63,22 @@ public final class AgentCapabilityCatalog {
                     "`@smithing trim diamond_helmet silence amethyst_shard 1`",
                     "altoclef_smithing",
                     "给指定盔甲使用纹饰模板和原料；count是最终指定纹饰成品数量，已有同款不会重复消耗。",
-                    "@ds 给钻石头盔添加紫水晶幽静纹饰", "装饰 染色 armor trim amethyst"));
+                    "@ds 给钻石头盔添加紫水晶幽静纹饰", "装饰 染色 armor trim amethyst"),
+            new Entry("pvp", "玩家 PvP 击杀",
+                    "`@punk <玩家名> [auto|sword|bow|spear]`",
+                    "altoclef_execute",
+                    "近距离自动用长矛（poke 蓄力/戳刺）或剑盾近战，目标拉开距离后自动切弓射击；"
+                            + "对方拉弓或箭飞来时举盾推进，近战会绕圈走位。第二个参数可强制攻击方式（sword 只用近战武器、"
+                            + "bow 只用弓、spear 只用长矛），与 altoclef_combat style 是同一套设置。目标必须在已加载范围"
+                            + "（视野/渲染距离）内，30 秒看不到会放弃并说明。只用于允许 PvP 的服务器。",
+                    "@ds 用剑杀掉玩家 Steve", "pvp 打架 击杀玩家 punk kill player 单挑"),
+            new Entry("combat", "战斗方式与攻击目标",
+                    "`altoclef_combat` action=style style=sword|bow|spear|auto；action=attack target=zombie|玩家名；action=stop",
+                    "altoclef_combat",
+                    "让模型自己决定用剑、弓还是长矛：style=sword 只用近战武器（剑盾+走位），style=bow 用弓箭（拉开距离、找射界），"
+                            + "style=spear 用长矛蓄力/戳刺，auto 保持默认（有长矛优先长矛，否则剑；中距离自动切弓只在 auto 下生效）。"
+                            + "attack 的 target 可以是玩家名或实体类型（zombie/skeleton/creeper…）；被打时会举盾。目标需在视野内，20 秒找不到会放弃。",
+                    "@ds 用剑杀掉附近那只僵尸", "战斗 攻击 武器 剑 弓 长矛 combat style attack sword bow spear"));
 
     private AgentCapabilityCatalog() { }
 

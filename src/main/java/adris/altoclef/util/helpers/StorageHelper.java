@@ -40,6 +40,25 @@ public class StorageHelper {
 
     public static List<PlayerSlot> INACCESSIBLE_PLAYER_SLOTS = Stream.concat(Stream.of(PlayerSlot.CRAFT_INPUT_SLOTS), Stream.of(PlayerSlot.ARMOR_SLOTS)).toList();
 
+    /**
+     * Closes any screen that would swallow vanilla key handling (pause screen,
+     * containers, …) as long as no item is held on the cursor.
+     *
+     * <p>Combat aims and bow release rely on input state; while a screen is open
+     * {@code Minecraft.handleKeybinds()} is skipped entirely, which makes the
+     * bot draw a bow but never release it. Chat and options stay untouched.
+     */
+    public static boolean closeInterferingScreens() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return false;
+        Screen screen = client.gui.screen();
+        if (screen == null) return false;
+        if (!client.player.containerMenu.getCarried().isEmpty()) return false;
+        if (screen instanceof ChatScreen || screen instanceof OptionsScreen) return false;
+        client.gui.setScreen(null);
+        return true;
+    }
+
     public static void closeScreen() {
         if (Minecraft.getInstance().player == null)
             return;

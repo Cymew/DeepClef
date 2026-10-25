@@ -25,7 +25,9 @@ public final class MultiplayerChatService {
     private ClientLevel world;
     private ClientPacketListener connection;
     private long epoch;
-    private boolean automatic;
+    // Auto-reply is on by default: players expect the bot to answer mentions and
+    // whispers without having to type "@ds chat on" every session.
+    private boolean automatic = true;
     private long automaticCursor, firstRelevantAt, lastRelevantAt, lastAutomaticAt = Long.MIN_VALUE;
     private MultiplayerChatBuffer.Line pendingAutomatic;
     private UUID addressedPartner;
@@ -68,7 +70,8 @@ public final class MultiplayerChatService {
             buffer.clear(); automaticCursor = 0; clearPending(); addressedPartner = null;
             sending = false; sendSerial++; lastSubmittedAt = Long.MIN_VALUE; lastSubmittedText = "";
             lastAutomaticAt = Long.MIN_VALUE;
-            if (serverChanged) automatic = false;
+            // Keep the player's on/off choice across reconnects; auto-reply now
+            // defaults to on, so a server change must not silently turn it off.
             if (mod.getMessageSender() != null)
                 mod.getMessageSender().cancelPendingCallbacks("连接或世界已变化，旧聊天回复已取消。");
         }

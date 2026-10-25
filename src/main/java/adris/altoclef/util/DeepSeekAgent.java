@@ -3,9 +3,11 @@ package adris.altoclef.util;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.entity.CombatAttackTask;
 import adris.altoclef.tasks.movement.BoatControlTask;
 import adris.altoclef.tasks.movement.ElytraFlightTask;
 import adris.altoclef.ui.DeepSeekThinkingOverlay;
+import adris.altoclef.util.helpers.CombatPreferences;
 import adris.altoclef.util.helpers.ItemHelper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -101,10 +103,12 @@ public class DeepSeekAgent {
             + "- 船：altoclef_boat（status 查看船实体ID/驾驶权；board 登船；goto 到 XZ；dismount 下船）。\n"
             + "- 鞘翅：altoclef_elytra（status 检查；goto 飞至绝对XZ并着陆；land 就近安全着陆）。\n"
             + "- 锻造：altoclef_smithing（status/templates/source/get/duplicate/upgrade/trim）。\n"
+            + "- 战斗：altoclef_combat（style 查看/设置攻击方式 auto|sword|bow|spear；attack 传 target=玩家名或实体类型；stop 停止）。\n"
             + "- 宏任务：altoclef_execute（DeepClef @ 指令）。完整常用指令清单：\n"
             + "  get <资源名> [数量]（获取物品）、food <数量>（收集食物）、meat <数量>（收集肉）、\n"
             + "  equip <leather|iron|gold|diamond|netherite>（穿整套护甲）、deposit [物品]（存进附近容器）、\n"
             + "  goto <x z>|<维度名>（长途移动，只给两个坐标）、follow <玩家>、bed（放床设置重生点/睡觉）、\n"
+            + "  punk <玩家名> [auto|sword|bow|spear]（PvP 击杀指定玩家，可指定攻击方式；目标必须在视野内，仅限允许PvP的服务器）、\n"
             + "  boat status / boat board [实体ID] / boat goto <x> <z> / boat dismount（自然登船、驾驶与下船）、\n"
             + "  elytra status / elytra goto <x> <z> / elytra land（鞘翅起飞、巡航并着陆）、\n"
             + "  locate_structure <desert_temple|stronghold>、inventory（查背包）、status（任务状态）、stop（停止）、\n"
@@ -501,6 +505,7 @@ public class DeepSeekAgent {
             String action=args.path("action").asText("");
             if (call.name().equals("altoclef_boat") || call.name().equals("altoclef_elytra")) return !action.equals("status");
             if (call.name().equals("altoclef_smithing")) return !List.of("status","templates","source").contains(action);
+            if (call.name().equals("altoclef_combat")) return !action.equals("style");
             if (call.name().equals("altoclef_execute")) {
                 String command=args.path("command").asText("").strip();
                 var words=adris.altoclef.commandsystem.ArgParser.splitLineIntoKeywords(command);
@@ -593,6 +598,7 @@ public class DeepSeekAgent {
             case "altoclef_boat" -> boatControl(call, result);
             case "altoclef_elytra" -> elytraControl(call, result);
             case "altoclef_smithing" -> smithingControl(call, result);
+            case "altoclef_combat" -> combatControl(call, result);
             case "altoclef_screenshot" -> captureScreenshot(result);
             case "altoclef_look" -> result.accept(lookText());
             case "altoclef_entities" -> result.accept(entitiesText(toolArgument(call, "radius")));
@@ -762,6 +768,48 @@ public class DeepSeekAgent {
             var words = adris.altoclef.commandsystem.ArgParser.splitLineIntoKeywords(command);
             runSmithing(words.subList(1, words.size()).toArray(String[]::new), result);
         } catch (Exception ex) { result.accept("锻造命令失败：" + ex.getMessage()); }
+    }
+
+    /**
+     * Combat control: pick the attack style (auto/sword/bow/spear) and attack a
+     * player name or an entity type. Delegates to CombatAttackTask, which drives
+     * PvpCombat (spear poke / bow positioning / sword shield+strafe).
+     */
+    private void combatControl(DeepSeekApi.ToolCall call, java.util.function.Consumer<String> result) {
+        try {
+            JsonNode args = MAPPER.readTree(call.argumentsJson().isBlank() ? "{}" : call.argumentsJson());
+            String action = args.path("action").asText("").toLowerCase(Locale.ROOT);
+            String target = args.path("target").asText("").trim();
+            String styleRaw = args.path("style").asText("").trim();
+            switch (action) {
+                case "style" -> {
+                    if (styleRaw.isBlank()) {
+                        result.accept("当前攻击方式：" + CombatPreferences.describe() + "。可选 auto/sword/bow/spear。");
+                        return;
+                    }
+                    CombatPreferences.setStyle(CombatPreferences.parse(styleRaw));
+                    result.accept("攻击方式已设为 " + CombatPreferences.describe() + "。");
+                }
+                case "attack" -> {
+                    if (target.isBlank()) {
+                        result.accept("错误：attack 需要 target（玩家名，或实体类型如 zombie/skeleton/creeper）。");
+                        return;
+                    }
+                    if (!styleRaw.isBlank()) CombatPreferences.setStyle(CombatPreferences.parse(styleRaw));
+                    overlay.appendLine("> combat " + CombatPreferences.getStyle() + " " + target);
+                    mod.runUserTask(new CombatAttackTask(target), () -> { });
+                    result.accept("已开始战斗：目标 " + target + "，攻击方式 " + CombatPreferences.describe()
+                            + "。用 altoclef_status 查看进度，altoclef_stop 停止。目标需在附近/视野内。");
+                }
+                case "stop" -> {
+                    mod.cancelUserTask();
+                    result.accept("已停止当前战斗。");
+                }
+                default -> result.accept("错误：action 必须是 attack、style 或 stop。");
+            }
+        } catch (Exception e) {
+            result.accept("战斗参数错误: " + e.getMessage());
+        }
     }
 
     private void smithingControl(DeepSeekApi.ToolCall call, java.util.function.Consumer<String> result) {
@@ -1351,7 +1399,13 @@ public class DeepSeekAgent {
                         blockAtSchema(m)),
                 new DeepSeekApi.ToolDef("altoclef_place",
                         "在相对机器人位置放一个方块（参数 offset=\"dx dy dz\"，可选 block=方块名默认 cobblestone）。材料不足会自动收集。",
-                        placeSchema(m)));
+                        placeSchema(m)),
+                new DeepSeekApi.ToolDef("altoclef_combat",
+                        "战斗控制：选择攻击方式并可攻击指定目标。"
+                        + "action=style 查看/设置攻击方式（style=auto|sword|bow|spear）；"
+                        + "action=attack 攻击 target（玩家名或实体类型 zombie/skeleton/creeper…），可同时指定 style；"
+                        + "action=stop 停止战斗。目标需在附近/视野内；近战会走位，被射时会举盾。",
+                        combatSchema(m)));
     }
 
     private static JsonNode schema(ObjectMapper m, String requiredField) {
@@ -1386,8 +1440,7 @@ public class DeepSeekAgent {
         return schema;
     }
 
-    private static JsonNode chatSchema(ObjectMapper m) {
-        ObjectNode schema=m.createObjectNode().put("type","object");
+    private static JsonNode chatSchema(ObjectMapper m) {        ObjectNode schema=m.createObjectNode().put("type","object");
         ObjectNode properties=schema.putObject("properties");
         properties.putObject("action").put("type","string").putArray("enum").add("read").add("status").add("send");
         properties.putObject("after_id").put("type","integer").put("minimum",0)
@@ -1398,6 +1451,21 @@ public class DeepSeekAgent {
         properties.putObject("recipient").put("type","string").put("description","send可选，在线玩家的准确名字；不填发公聊，填写则私聊");
         schema.putArray("required").add("action");
         schema.put("additionalProperties",false);
+        return schema;
+    }
+
+    private static JsonNode combatSchema(ObjectMapper m) {
+        ObjectNode schema = m.createObjectNode().put("type", "object");
+        ObjectNode properties = schema.putObject("properties");
+        properties.putObject("action").put("type", "string")
+                .putArray("enum").add("attack").add("style").add("stop");
+        properties.putObject("target").put("type", "string")
+                .put("description", "attack 必填：玩家名，或实体类型（zombie/skeleton/creeper/enderman…，可带 minecraft: 前缀）");
+        properties.putObject("style").put("type", "string")
+                .putArray("enum").add("auto").add("sword").add("bow").add("spear")
+                .add("");
+        schema.putArray("required").add("action");
+        schema.put("additionalProperties", false);
         return schema;
     }
 
@@ -1519,6 +1587,8 @@ public class DeepSeekAgent {
             sb.append(mobilityText(player));
         }
         sb.append("维度: ").append(dimensionName()).append("\n");
+        sb.append("攻击方式: ").append(CombatPreferences.describe())
+                .append("（可用 altoclef_combat style=auto|sword|bow|spear 切换；长矛/弓需背包里有对应武器，弓还需箭）\n");
         if (mod.getTaskRunner().getCurrentTaskChain() != null) {
             var tasks = mod.getTaskRunner().getCurrentTaskChain().getTasks();
             sb.append("当前任务: ").append(tasks.isEmpty() ? "(无)" : tasks.get(0).toString()).append("\n");

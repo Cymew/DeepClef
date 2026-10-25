@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.Minecraft;
@@ -43,6 +44,12 @@ public final class BowCombat {
     private static int _aimTicks;
     private static Goal _approachGoal;
     private static Goal _retreatGoal;
+    /** Tick of the last RELEASE attempt, used to verify the arrow actually left the bow. */
+    private static int _releaseTick = -1;
+    /** How many times a stuck release had to be forced. */
+    private static int _forcedReleases;
+    /** Whether the post-release arrow check was already logged for this shot. */
+    private static boolean _arrowCheckLogged;
 
     private BowCombat() { }
 
@@ -97,6 +104,25 @@ public final class BowCombat {
             _nextDrawTick = player.tickCount + 5;
         }
         _active = true;
+        // A screen (pause screen, container, …) disables Minecraft.handleKeybinds(),
+        // which also disables vanilla "release the bow on key up". Close it so the
+        // normal input path works; drawing itself uses direct calls either way.
+        if (StorageHelper.closeInterferingScreens()) {
+            Debug.logMessage("[DeepClef bow] closed interfering screen");
+        }
+        // Post-release verification: log whether an arrow actually appeared, so a
+        // swallowed RELEASE_USE_ITEM is visible in the game log.
+        if (_releaseTick >= 0) {
+            int sinceRelease = player.tickCount - _releaseTick;
+            if (!_arrowCheckLogged && sinceRelease >= 3) {
+                _arrowCheckLogged = true;
+                long arrows = mod.level().getEntities(player, player.getBoundingBox().inflate(24),
+                        entity -> entity instanceof net.minecraft.world.entity.projectile.arrow.AbstractArrow).size();
+                Debug.logMessage("[DeepClef bow] 3 ticks after release: arrowsNear=" + arrows
+                        + " stillUsing=" + usingBow(player) + " screen=" + screenName());
+            }
+            if (sinceRelease >= 20) _releaseTick = -1;
+        }
         Vec3 origin = arrowOrigin(player);
         Vec3 targetMotion = target.getKnownSpeed();
         // Teleport discontinuities cannot be extrapolated into an arrow intercept.
@@ -168,18 +194,34 @@ public final class BowCombat {
                     && player.getUseItem().is(Items.BOW);
             if (!_drawing) {
                 _nextDrawTick = player.tickCount + 10;
+                Debug.logMessage("[DeepClef bow] draw refused (screen=" + screenName()
+                        + " using=" + player.isUsingItem() + ")");
                 return false;
             }
             _drawStartedTick = player.tickCount;
+            Debug.logMessage("[DeepClef bow] draw start (screen=" + screenName() + ")");
         }
         mod.getInputControls().hold(Input.CLICK_RIGHT);
         _ownsRightClick = true;
-        if (player.tickCount - _drawStartedTick > MAX_DRAW_WAIT_TICKS) {
+        // Measure the draw ourselves: getTicksUsingItem() can stall when the client
+        // and server disagree about the use state, which used to leave the bow
+        // drawn forever after a couple of shots.
+        int drawTicks = Math.max(player.tickCount - _drawStartedTick, player.getTicksUsingItem());
+        if (drawTicks > MAX_DRAW_WAIT_TICKS) {
             cancelOwnUse(mod);
             _nextDrawTick = player.tickCount + 20;
+            Debug.logMessage("[DeepClef bow] draw timeout after " + drawTicks + " ticks");
             return false;
         }
-        if (player.getTicksUsingItem() < BowAim.FULL_DRAW_TICKS || _aimTicks < 2) return false;
+        if (drawTicks < BowAim.FULL_DRAW_TICKS || _aimTicks < 2) {
+            if (player.tickCount % 20 == 0) {
+                Debug.logMessage("[DeepClef bow] still drawing: drawTicks=" + drawTicks
+                        + " ticksUsing=" + player.getTicksUsingItem()
+                        + " aim=" + _aimTicks + " steady=" + _steadyTicks
+                        + " using=" + player.isUsingItem() + " screen=" + screenName());
+            }
+            return false;
+        }
         // Check the actual launch vector one last time before the RELEASE_USE_ITEM packet.
         Vec3 actualInitial = player.getLookAngle().scale(3).add(inheritedMotion(player));
         if (!trajectoryClear(mod, target, arrowOrigin(player), actualInitial, targetMotion, solution.flightTicks())) {
@@ -189,10 +231,17 @@ public final class BowCombat {
         }
         player.connection.send(new ServerboundMovePlayerPacket.Rot(player.getYRot(), player.getXRot(),
                 player.onGround(), player.horizontalCollision));
+        boolean wasUsing = player.isUsingItem();
         mod.getController().releaseUsingItem(player);
         mod.getInputControls().release(Input.CLICK_RIGHT);
         _ownsRightClick = false;
         _drawing = false;
+        _releaseTick = player.tickCount;
+        _arrowCheckLogged = false;
+        Debug.logMessage("[DeepClef bow] release: ticksUsing=" + player.getTicksUsingItem()
+                + " wasUsing=" + wasUsing + " stillUsing=" + player.isUsingItem()
+                + " onGround=" + player.onGround()
+                + " screen=" + screenName());
         _nextDrawTick = player.tickCount + Math.max(4, Math.min(12, (int) Math.ceil(solution.flightTicks())));
         return true;
     }
@@ -276,6 +325,16 @@ public final class BowCombat {
                 && player.getUsedItemHand() == InteractionHand.MAIN_HAND && player.getUseItem().is(Items.BOW);
     }
 
+    private static boolean usingBow(LocalPlayer player) {
+        return player != null && player.isUsingItem() && player.getUseItem().is(Items.BOW);
+    }
+
+    /** Screen class name for diagnostics ("none" when no screen is open). */
+    private static String screenName() {
+        var screen = Minecraft.getInstance().gui.screen();
+        return screen == null ? "none" : screen.getClass().getSimpleName();
+    }
+
     private static void cancelOwnUse(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         if (ownsBowUse(player)) {
@@ -317,6 +376,9 @@ public final class BowCombat {
         _nextDrawTick = 0;
         _approachGoal = null;
         _retreatGoal = null;
+        _releaseTick = -1;
+        _forcedReleases = 0;
+        _arrowCheckLogged = false;
     }
 
     /** Mounted goals use horse feet, while sight uses the rider's current height above those feet. */

@@ -20,6 +20,7 @@
     "ChatReadMixin",
     "ClientBlockBreakMixin",
     "ClientOpenScreenMixin",
+    "ClientPauseOnLostFocusMixin",
     "ClientTickMixin",
     "ClientUIMixin",
     "CommandSuggestionsMixin",
