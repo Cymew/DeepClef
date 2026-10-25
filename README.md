@@ -53,7 +53,7 @@ DeepClef observes player chat in the current connection and can respond:
 ## Installation
 
 1. Install [Fabric Loader](https://fabricmc.net/use/) **0.19.5+** for **Minecraft 26.3** (Java 25 runtime).
-2. Drop `deepclef-26.3-beta2.jar` into your `mods` folder.
+2. Download the latest jar from [Releases](../../releases/latest) (for example `deepclef-26.3-beta3.jar`) and drop it into your `mods` folder.
 3. Baritone is **bundled** — do not install a second Baritone.
 4. Remove any previous `altoclef-*.jar` / older DeepClef package to avoid conflicts. Fabric API is not required.
 5. Launch the game and join a world. A screen will ask for your DeepSeek API key on first `@ds` use (or press the button when prompted).
