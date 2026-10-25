@@ -1,0 +1,110 @@
+/*
+ * DeepClef — an AI-powered Minecraft agent built upon AltoClef.
+ *
+ * Build tooling mirrors baritone-1.20.0 (Unimined + official names + Java 25),
+ * because MC 26.1+ ships unobfuscated and Yarn is discontinued.
+ */
+
+plugins {
+    id 'java'
+    id "com.github.johnrengelman.shadow" version "8.1.1"
+}
+
+// Loaded via buildSrc, same mechanism (and version) as baritone-1.20.0.
+apply plugin: "xyz.wagyourtail.unimined"
+
+base {
+    archivesName = project.archives_base_name
+}
+version = project.mod_version
+group = project.maven_group
+
+java {
+    sourceCompatibility = JavaVersion.toVersion(project.java_version)
+    targetCompatibility = JavaVersion.toVersion(project.java_version)
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(project.java_version.toInteger()))
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'fabric-maven'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = "MarvionKiritoRepo"
+        url = "https://marvionkirito.github.io/maven/"
+    }
+    maven {
+        name = 'babbaj-repo'
+        url = 'https://babbaj.github.io/maven/'
+    }
+    flatDir {
+        // Local Baritone 1.20.0 (MC 26.3) dev artifact, produced by
+        //   gradlew --configure-on-demand :fabric:remapJar  (run from ./baritone-1.20.0)
+        dirs '../../baritone-1.20.0/fabric/build/libs', '../../'
+    }
+}
+
+unimined.minecraft {
+    version rootProject.minecraft_version
+
+    mappings {
+        mojmap()
+    }
+
+    fabric {
+        loader project.loader_version
+    }
+}
+
+configurations {
+    shadow
+    implementation.extendsFrom shadow
+}
+
+dependencies {
+    // Jackson JSON (shadowed into the final jar to avoid version conflicts)
+    shadow 'com.fasterxml.jackson.core:jackson-core:2.17.2'
+    shadow 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
+    shadow 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+
+    // Local Baritone 1.20.0 (MC 26.3). Bundled jar-in-jar like the old
+    // baritone-unoptimized-fabric setup, so the produced altoclef jar is self-contained.
+    implementation 'baritone:baritone-fabric:1.20.0'
+    include 'baritone:baritone-fabric:1.20.0'
+}
+
+shadowJar {
+    configurations = [project.configurations.shadow]
+    archiveClassifier.set 'dev-shadow'
+}
+
+remapJar {
+    dependsOn shadowJar
+    inputFile.set shadowJar.archiveFile
+    archiveClassifier.set null
+}
+
+jar {
+    archiveClassifier.set 'dev'
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "preserveJsonEscapes", true
+
+    filesMatching("fabric.mod.json") {
+        expand(version: project.version) {
+            escapeBackslash = true
+        }
+    }
+    duplicatesStrategy DuplicatesStrategy.EXCLUDE
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+    options.release = project.java_version.toInteger()
+}

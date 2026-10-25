@@ -1,0 +1,7 @@
+{
+  "modmenu.nameTranslation.deepclef": "DeepClef",
+  "modmenu.summaryTranslation.deepclef": "Don't Just Automate. Think.",
+  "modmenu.descriptionTranslation.deepclef": "MINECRAFT AI AGENT\nDon't Just Automate. Think.\n\nAn AI-powered Minecraft agent built upon AltoClef, capable of perceiving its surroundings, making decisions, and adapting its actions in real time.\n\nPowered by DeepSeek, DeepClef combines environmental awareness with autonomous planning and execution. Explore, gather resources, craft and upgrade equipment, fight, ride, sail across water and ice, and fly with elytra through natural-language instructions.\n\nIn multiplayer, DeepClef can observe player chat, respond to teammates, and adapt its ongoing plan while coordinating actions and conversation.\n\nAuthor: Cymew\n\nBuilt upon AltoClef\nOriginal authors: TacoTechnica and James Green\nPort contributor: Marvion Kirito\nMIT copyright holder: Adris Jautakas\n\nBundled Baritone\nOriginal authors: leijurv and Brady",
+  "deepclef.link.altoclef": "AltoClef (upstream)",
+  "deepclef.link.baritone": "Baritone (upstream)"
+}

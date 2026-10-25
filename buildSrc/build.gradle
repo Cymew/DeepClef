@@ -1,0 +1,26 @@
+/*
+ * Altoclef buildSrc: loads the Unimined plugin the same way baritone-1.20.0 does.
+ * (1.4.2-SNAPSHOT is required for Minecraft 26.3 support.)
+ */
+
+repositories {
+    mavenLocal()
+    maven {
+        name = 'WagYourMaven'
+        url = 'https://maven.wagyourtail.xyz/releases'
+    }
+    maven {
+        name = 'WagYourMaven Snapshots'
+        url = 'https://maven.wagyourtail.xyz/snapshots'
+    }
+    maven {
+        name = 'FabricMaven'
+        url = 'https://maven.fabricmc.net/'
+    }
+    mavenCentral()
+}
+
+dependencies {
+    implementation group: 'xyz.wagyourtail.unimined', name: 'xyz.wagyourtail.unimined.gradle.plugin', version: '1.4.2-SNAPSHOT'
+    implementation group: 'xyz.wagyourtail.unimined.mapping', name: 'unimined-mapping-library-jvm', version: '1.2.2'
+}

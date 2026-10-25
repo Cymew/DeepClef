@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        mavenLocal()
+        maven {
+            name = 'WagYourMaven'
+            url = 'https://maven.wagyourtail.xyz/releases'
+        }
+        maven {
+            name = 'WagYourMaven Snapshots'
+            url = 'https://maven.wagyourtail.xyz/snapshots'
+        }
+        maven {
+            name = "Fabric"
+            url = "https://maven.fabricmc.net/"
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'DeepClef'

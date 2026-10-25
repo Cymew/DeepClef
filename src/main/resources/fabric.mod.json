@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "deepclef",
+  "provides": [
+    "altoclef"
+  ],
+  "version": "${version}",
+  "name": "DeepClef",
+  "description": "MINECRAFT AI AGENT\nDon't Just Automate. Think.\n\nAn AI-powered Minecraft agent built upon AltoClef, capable of perceiving its surroundings, making decisions, and adapting its actions in real time.\n\nPowered by DeepSeek, DeepClef combines environmental awareness with autonomous planning and execution. Explore, gather resources, craft and upgrade equipment, fight, ride, sail across water and ice, and fly with elytra through natural-language instructions.\n\nIn multiplayer, DeepClef can observe player chat, respond to teammates, and adapt its ongoing plan while coordinating actions and conversation.\n\nAuthor: Cymew\n\nBuilt upon AltoClef\nOriginal authors: TacoTechnica and James Green\nPort contributor: Marvion Kirito\nMIT copyright holder: Adris Jautakas\n\nBundled Baritone\nOriginal authors: leijurv and Brady",
+  "authors": [
+    "Cymew"
+  ],
+  "contributors": [
+    "AltoClef — original author: TacoTechnica",
+    "AltoClef — original author: James Green",
+    "AltoClef — port contributor: Marvion Kirito",
+    "AltoClef — MIT copyright holder: Adris Jautakas",
+    "Baritone — original author: leijurv",
+    "Baritone — original author: Brady"
+  ],
+  "license": [
+    "MIT",
+    "LGPL-3.0"
+  ],
+  "icon": "assets/altoclef/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "main": [
+      "adris.altoclef.AltoClef"
+    ]
+  },
+  "mixins": [
+    "altoclef.mixins.json"
+  ],
+  "custom": {
+    "modmenu": {
+      "links": {
+        "deepclef.link.altoclef": "https://github.com/gaucho-matrero/altoclef",
+        "deepclef.link.baritone": "https://github.com/cabaletta/baritone"
+      }
+    }
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3"
+  }
+}
