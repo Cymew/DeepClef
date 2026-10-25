@@ -1,7 +1,8 @@
 # User-specific stuff
 .idea/
 .vs/
-baritone/
+# Only the LOCAL baritone clone at the repo root (never src/**/baritone)
+/baritone/
 
 *.iml
 *.ipr
