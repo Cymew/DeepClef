@@ -2,6 +2,8 @@
 
 **MINECRAFT AI AGENT**
 
+**English** | [简体中文](README.zh-CN.md)
+
 ## Don't Just Automate. Think.
 
 DeepClef is an AI-powered Minecraft agent for **Java Edition 26.3 (Wilderness Bound)** with Fabric, built upon [AltoClef](https://github.com/gaucho-matrero/altoclef). It perceives its surroundings, makes decisions, and adapts its actions in real time.
