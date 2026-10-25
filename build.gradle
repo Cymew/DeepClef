@@ -42,9 +42,9 @@ repositories {
         url = 'https://babbaj.github.io/maven/'
     }
     flatDir {
-        // Local Baritone 1.20.0 (MC 26.3) dev artifact, produced by
-        //   gradlew --configure-on-demand :fabric:remapJar  (run from ./baritone-1.20.0)
-        dirs '../../baritone-1.20.0/fabric/build/libs', '../../'
+        // Bundled Baritone 1.20.0 (MC 26.3, altoclef-integrated fork). The jar is
+        // committed under libs/ so the project builds anywhere (CI included).
+        dirs 'libs'
     }
 }
 
