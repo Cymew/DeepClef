@@ -68,6 +68,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
             return 100;
         }
         if (mod.getModSettings().shouldAvoidDrowning()
+                && !adris.altoclef.util.helpers.SwimNavigation.handlesOxygen(mod)
                 && !mod.getClientBaritone().getPathingBehavior().isPathing()
                 && mod.getPlayer().isInWater()
                 && mod.getPlayer().getAirSupply() < mod.getPlayer().getMaxAirSupply()) {

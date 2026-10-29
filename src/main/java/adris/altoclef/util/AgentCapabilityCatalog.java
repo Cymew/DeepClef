@@ -24,11 +24,25 @@ public final class AgentCapabilityCatalog {
             + "这些开关由本地玩家输入，模型不得用execute递归调用ds。";
 
     private static final List<Entry> ENTRIES = List.of(
+            new Entry("swimming", "三维游泳与补氧",
+                    "`@swim status`；`@swim goto 100 45 200`；`@swim surface 500 200`；`@swim ascend`",
+                    "altoclef_swim",
+                    "显式游泳需先在水中；普通goto缺船时自动沿表层跨水并接回陆路。仅规划已加载水体，连续跟随三维路线。"
+                    + "提前按剩余氧气和撤回路程补氧：水面、门内空气、灵魂沙/岩浆气泡柱；岩浆附近潜行。必要时使用携带的木门，不采集材料。"
+                    + "模型水下操作前检查氧气；不要把附魔随机延长或尚未成功放置的门当作已补氧。goto目标需真实水体，不能穿墙。",
+                    "@ds 游到水下 X=100 Y=45 Z=200，注意补充氧气", "swim swimming oxygen 游泳 氧气 补氧 水下 潜水 表层 气泡 门"),
             new Entry("boat", "船与竹筏驾驶",
                     "`@boat status`；`@boat board [ID]`；`@boat goto 100 200`；`@boat dismount`",
                     "altoclef_boat",
                     "水路寻路、驾驶与安全下船；到达水上目标后仍留船上。已乘船时普通 @goto 也使用船导航。",
                     "@ds 坐船去 X=100 Z=200", "水路 航行 boat raft"),
+            new Entry("nether_portal", "浇筑下界传送门",
+                    "`@portal`（前往/浇筑）；`@portal cast`（就地浇筑）；或 `@goto nether`",
+                    "altoclef_execute",
+                    "主世界的浇筑法：用水桶 + 附近岩浆自动搭浇筑框、舀岩浆、浇水成黑曜石、点火。"
+                            + "缺工具时它会自己收集桶、水桶、打火石；**不需要钻石镐**。只有在拿不到水或附近没有岩浆时，"
+                            + "才会退回挖黑曜石路线（那时才需要钻石镐）。已有传送门时 @portal 会直接走过去。",
+                    "@ds 用水桶浇筑一个下界传送门", "下界 传送门 浇筑 黑曜石 岩浆 水桶 portal nether obsidian"),
             new Entry("auto_boat", "长水路自动放船",
                     "普通 `@goto 100 200`，或 `@boat board` / `@boat goto 100 200`",
                     "altoclef_execute / altoclef_boat",
@@ -85,7 +99,7 @@ public final class AgentCapabilityCatalog {
     /** A literal keyword filters documentation only; it can never dispatch a command. */
     public static String query(String keyword) {
         String filter = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        StringBuilder out = new StringBuilder("本周新增功能与用法（2026-10-19～24，坐标示例均为绝对X/Z）：\n\n");
+        StringBuilder out = new StringBuilder("新增功能与用法（更新至2026-10-29；坐标均为绝对值，游泳goto含Y）：\n\n");
         out.append("| 功能 | 使用方法 | 条件与行为 |\n|---|---|---|\n");
         int matches = 0;
         for (Entry entry : ENTRIES) {
@@ -98,7 +112,7 @@ public final class AgentCapabilityCatalog {
                 || List.of("mounted", "horse", "spear", "bow", "combat").contains(filter);
         boolean social = filter.isEmpty() || SOCIAL_USAGE.toLowerCase(Locale.ROOT).contains(filter)
                 || List.of("chat","multiplayer","聊天","多人").contains(filter);
-        if (matches == 0 && !related && !social) return "没有匹配的功能。可查询 boat、冰路、鞘翅、模板、锻造、骑马、聊天或省略keyword查看全部。";
+        if (matches == 0 && !related && !social) return "没有匹配的功能。可查询 boat、冰路、鞘翅、游泳、模板、锻造、骑马、聊天或省略keyword查看全部。";
         if (matches == 0) out = new StringBuilder();
         if (related) out.append(RELATED).append('\n');
         if (social) out.append(SOCIAL_USAGE).append('\n');
@@ -119,7 +133,7 @@ public final class AgentCapabilityCatalog {
     }
 
     public static String markdown() {
-        StringBuilder out = new StringBuilder("# 本周新增功能速查（2026-10-19～24）\n\n");
+        StringBuilder out = new StringBuilder("# 新增功能速查（更新至2026-10-29）\n\n");
         out.append("| 功能 | 使用方法 | 条件与行为 |\n|---|---|---|\n");
         for (Entry entry : ENTRIES) out.append(entry.row());
         out.append("\nDeepSeek直接输入：\n\n");
@@ -127,7 +141,7 @@ public final class AgentCapabilityCatalog {
         return out.append("\n").append(RELATED).append("\n\n")
                 .append("## 10/25 多人聊天\n\n").append(SOCIAL_USAGE).append("\n\n")
                 .append("模型新增只读altoclef_capabilities用法查询，执行仍使用原有船/飞行/锻造工具；每步读取真实结果，船/鞘翅/锻造不要合并成分号链。用法查询不会启动游戏动作，执行动作仍需满足实际条件。\n\n")
-                .append("普通goto为自动旅行，可在满足条件时选择骑乘、鞘翅或船。要固定使用船或鞘翅，请用对应专用命令。飞行中需要换任务时先请求着陆并读结果。\n\n")
+                .append("普通goto为自动旅行，可在满足条件时选择骑乘、鞘翅或船，缺船进入水域后沿表层游泳。要固定使用船或鞘翅，请用对应专用命令。飞行中需要换任务时先请求着陆并读结果。\n\n")
                 .append("本文件由AgentCapabilityCatalog.markdown()生成，与模型目录共用数据。\n").toString();
     }
 }

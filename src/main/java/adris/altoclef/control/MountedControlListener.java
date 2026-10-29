@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.MountedNavigation;
 import adris.altoclef.util.helpers.BoatNavigation;
 import adris.altoclef.util.helpers.ElytraNavigation;
+import adris.altoclef.util.helpers.SwimNavigation;
 import baritone.api.event.events.PlayerUpdateEvent;
 import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.WorldEvent;
@@ -27,11 +28,14 @@ public final class MountedControlListener implements AbstractGameEventListener {
             MountedNavigation.applyLook(_mod);
             BoatNavigation.applyInputs(_mod);
             ElytraNavigation.applyInputs(_mod);
+            SwimNavigation.applyInputs(_mod);
             ElytraNavigation.applyLook(_mod);
+            SwimNavigation.applyLook(_mod);
         } else {
             MountedNavigation.releaseAll(_mod);
             BoatNavigation.releaseAll(_mod);
             ElytraNavigation.releaseAll(_mod);
+            SwimNavigation.releaseAll(_mod);
         }
     }
 
@@ -41,6 +45,7 @@ public final class MountedControlListener implements AbstractGameEventListener {
             // LookBehavior (including its rideTick helper) may have set a later target.
             MountedNavigation.applyLook(_mod);
             ElytraNavigation.applyLook(_mod);
+            SwimNavigation.applyLook(_mod);
         }
     }
 
@@ -50,6 +55,7 @@ public final class MountedControlListener implements AbstractGameEventListener {
             MountedNavigation.releaseAll(_mod);
             BoatNavigation.releaseAll(_mod);
             ElytraNavigation.releaseAll(_mod);
+            SwimNavigation.releaseAll(_mod);
         }
     }
 }

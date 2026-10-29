@@ -107,7 +107,8 @@ public class DeepSeekAgent {
             + "- 宏任务：altoclef_execute（DeepClef @ 指令）。完整常用指令清单：\n"
             + "  get <资源名> [数量]（获取物品）、food <数量>（收集食物）、meat <数量>（收集肉）、\n"
             + "  equip <leather|iron|gold|diamond|netherite>（穿整套护甲）、deposit [物品]（存进附近容器）、\n"
-            + "  goto <x z>|<维度名>（长途移动，只给两个坐标）、follow <玩家>、bed（放床设置重生点/睡觉）、\n"
+            + "  goto <x z>|<维度名>（长途移动，只给两个坐标；goto nether 会走到/浇筑下界传送门）、follow <玩家>、bed（放床设置重生点/睡觉）、\n"
+            + "  portal [cast]（浇筑下界传送门：主世界用水桶+附近岩浆自动搭框、舀岩浆和水、点火，不需要钻石镐；cast 就地浇筑。没有水/岩浆时才走挖黑曜石路线，那才需要钻石镐）、\n"
             + "  punk <玩家名> [auto|sword|bow|spear]（PvP 击杀指定玩家，可指定攻击方式；目标必须在视野内，仅限允许PvP的服务器）、\n"
             + "  boat status / boat board [实体ID] / boat goto <x> <z> / boat dismount（自然登船、驾驶与下船）、\n"
             + "  elytra status / elytra goto <x> <z> / elytra land（鞘翅起飞、巡航并着陆）、\n"
@@ -116,6 +117,7 @@ public class DeepSeekAgent {
             + "  宏任务适合大范围采集/长途移动/复杂制造；小范围动作请用上面手动工具。\n"
             + "  不得通过 execute 再调用 ds、dsh 或 dssize，避免递归启动智能体；只调用已登记的命令。\n"
             + "- 控制：altoclef_stop（停止任务）。\n\n"
+            + "游泳用altoclef_swim：goto指定水下XYZ，surface指定表层XZ，ascend先补氧。先检查氧气/食物和水下呼吸剩余时间；陆水混合行程用普通goto。\n"
             + AgentCapabilityCatalog.prompt() + "\n"
             + "【输出】任务完成后用简短中文总结：做了什么、结果如何、遇到了什么问题。";
 
@@ -159,6 +161,17 @@ public class DeepSeekAgent {
 
     public static boolean isBusy() {
         return busy;
+    }
+
+    /**
+     * True when the running agent belongs to the world/connection we are in now.
+     * A save switch must never let the previous save's conversation answer for us.
+     */
+    public static boolean isSessionValid(AltoClef mod) {
+        DeepSeekAgent agent = current;
+        if (agent == null) return true;
+        return agent.sessionWorld == mod.level() && mod.getPlayer() != null
+                && mod.getPlayer().connection == agent.sessionConnection;
     }
 
     /**
@@ -503,7 +516,7 @@ public class DeepSeekAgent {
         try {
             JsonNode args=MAPPER.readTree(call.argumentsJson().isBlank()?"{}":call.argumentsJson());
             String action=args.path("action").asText("");
-            if (call.name().equals("altoclef_boat") || call.name().equals("altoclef_elytra")) return !action.equals("status");
+            if (call.name().equals("altoclef_boat") || call.name().equals("altoclef_elytra") || call.name().equals("altoclef_swim")) return !action.equals("status");
             if (call.name().equals("altoclef_smithing")) return !List.of("status","templates","source").contains(action);
             if (call.name().equals("altoclef_combat")) return !action.equals("style");
             if (call.name().equals("altoclef_execute")) {
@@ -518,7 +531,9 @@ public class DeepSeekAgent {
 
     private static boolean isLandingTool(DeepSeekApi.ToolCall call) {
         try {
-            return call.name().equals("altoclef_elytra") && "land".equals(MAPPER.readTree(call.argumentsJson()).path("action").asText());
+            String action=MAPPER.readTree(call.argumentsJson()).path("action").asText();
+            return call.name().equals("altoclef_elytra") && "land".equals(action)
+                    || call.name().equals("altoclef_swim") && "ascend".equals(action);
         } catch (Exception ignored) { return false; }
     }
 
@@ -591,12 +606,19 @@ public class DeepSeekAgent {
                     return;
                 }
                 cancellingTask=true;
+                if (mod.getPlayer()!=null && mod.getPlayer().isUnderWater()
+                        && adris.altoclef.util.helpers.SwimNavigation.handlesOxygen(mod)) {
+                    cancellingTask=false;
+                    runSwimTask(adris.altoclef.tasks.movement.SwimTask.ascend(),result);
+                    return;
+                }
                 try { mod.cancelUserTask(); } finally { cancellingTask=false; }
                 result.accept("已发送停止当前任务的指令。");
             }
             case "altoclef_execute" -> executeCommand(call, result);
             case "altoclef_boat" -> boatControl(call, result);
             case "altoclef_elytra" -> elytraControl(call, result);
+            case "altoclef_swim" -> swimControl(call, result);
             case "altoclef_smithing" -> smithingControl(call, result);
             case "altoclef_combat" -> combatControl(call, result);
             case "altoclef_screenshot" -> captureScreenshot(result);
@@ -661,6 +683,15 @@ public class DeepSeekAgent {
         // Validate every segment using the same tokenizer as command dispatch. In particular,
         // executing ds from within ds would replace this agent and strand its tool callback.
         String[] parts = command.split(";", -1);
+        for (String part : parts) {
+            var words=adris.altoclef.commandsystem.ArgParser.splitLineIntoKeywords(part.trim());
+            if (!words.isEmpty() && words.getFirst().equals("swim")) {
+                if (parts.length!=1) { result.accept("请将 swim 从分号链拆开，读取实际游泳结果后再继续。"); return; }
+                try { runSwimTask(adris.altoclef.commands.SwimCommand.parseTask(words.subList(1,words.size()).toArray(String[]::new)),result); }
+                catch (Exception ex) { result.accept("游泳参数错误: "+ex.getMessage()); }
+                return;
+            }
+        }
         if (isBoatCommandChain(command)) {
             result.accept("错误: 含 boat 的分号命令链请拆开，分别调用 altoclef_boat；每步读取真实结果后再继续。");
             return;
@@ -976,6 +1007,33 @@ public class DeepSeekAgent {
         WATCHDOG.schedule(() -> Minecraft.getInstance().execute(
                 () -> complete.accept(description + " 超时（超过 " + TOOL_TIMEOUT_MINUTES + " 分钟），可能仍在后台运行")),
                 TOOL_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+    }
+
+    private void swimControl(DeepSeekApi.ToolCall call, java.util.function.Consumer<String> result) {
+        try {
+            JsonNode args=MAPPER.readTree(call.argumentsJson().isBlank()?"{}":call.argumentsJson());
+            String action=args.path("action").asText("").toLowerCase(Locale.ROOT);
+            String[] words=switch(action) {
+                case "status", "ascend" -> new String[]{action};
+                case "surface" -> new String[]{action,Integer.toString(boatInteger(args,"x")),Integer.toString(boatInteger(args,"z"))};
+                case "goto" -> new String[]{action,Integer.toString(boatInteger(args,"x")),Integer.toString(boatInteger(args,"y")),Integer.toString(boatInteger(args,"z"))};
+                default -> throw new IllegalArgumentException("action必须是status/goto/surface/ascend");
+            };
+            runSwimTask(adris.altoclef.commands.SwimCommand.parseTask(words),result);
+        } catch(Exception ex) { result.accept("游泳操作错误: "+ex.getMessage()); }
+    }
+
+    private void runSwimTask(adris.altoclef.tasks.movement.SwimTask requested, java.util.function.Consumer<String> result) {
+        if(requested==null) { result.accept(adris.altoclef.util.helpers.SwimNavigation.status(mod));return; }
+        if(mod.getPlayer()==null || mod.level()==null || mod.getPlayer().isFallFlying()) {
+            result.accept("无法开始游泳：请先进入世界并着陆。"); return;
+        }
+        var executing=adris.altoclef.tasks.movement.SwimTask.forExecution(mod.getUserTaskChain().getCurrentTask(),requested);
+        var previous=mod.getUserTaskChain().getCurrentTask();
+        runTaskWithWatchdog(executing,"游泳",executing::getResult,result);
+        if(previous!=executing && mod.getUserTaskChain().getCurrentTask()==executing && toolGate.hasDeferred()) {
+            toolGate.cancelDeferred(); completedBackgroundActions.add("先前水中动作已被补氧任务替代，原目标尚未确认完成。");
+        }
     }
 
     private void boatControl(DeepSeekApi.ToolCall call, java.util.function.Consumer<String> result) {
@@ -1369,6 +1427,12 @@ public class DeepSeekAgent {
                         + "goto 必填绝对整数 x、z，正常装备、起飞、三维滚动寻路与省烟花的高空巡航，并在目标附近盘旋减速着陆后完成；"
                         + "land 请求就近安全着陆。没有材料或净空不足会明确失败，不自动收集。飞行中勿改用步行命令。",
                         elytraSchema(m)),
+                new DeepSeekApi.ToolDef("altoclef_swim",
+                        "游泳控制：status查看实际氧气与导航；goto给绝对整数x/y/z，在已加载水体内三维滚动寻路；"
+                        + "surface给x/z沿表层游泳，ascend寻找可呼吸位置并补氧。显式旅行需先在水中；陆水混合行程用普通goto，缺船时自动游泳。"
+                        + "按实际氧气提前返回水面/空气空间/气泡柱，岩浆附近自动潜行；必要时使用携带的木门创建空气空间，不自动采集门。"
+                        + "无可行路线会返回真实失败，不保证穿越封闭水洞；先看完成结果再开始下个任务。",
+                        swimSchema(m)),
                 new DeepSeekApi.ToolDef("altoclef_smithing",
                         "原生锻造与19种模板：status检查；templates列模板；source给template查首份来源/复制材料；"
                         + "get给template和count取得至少count份；duplicate需已有模板，净增加count份；"
@@ -1495,6 +1559,14 @@ public class DeepSeekAgent {
         return schema;
     }
 
+    private static JsonNode swimSchema(ObjectMapper m) {
+        ObjectNode schema=m.createObjectNode().put("type","object").put("additionalProperties",false);
+        ObjectNode p=schema.putObject("properties");
+        p.putObject("action").put("type","string").putArray("enum").add("status").add("goto").add("surface").add("ascend");
+        for(String axis:List.of("x","y","z"))p.putObject(axis).put("type","integer").put("minimum",-29_999_984).put("maximum",29_999_984);
+        schema.putArray("required").add("action"); return schema;
+    }
+
     private static JsonNode smithingSchema(ObjectMapper m) {
         ObjectNode schema = m.createObjectNode().put("type", "object");
         ObjectNode properties = schema.putObject("properties");
@@ -1602,6 +1674,7 @@ public class DeepSeekAgent {
     private String mobilityText(LocalPlayer player) {
         StringBuilder out = new StringBuilder("载具: ").append(BoatControlTask.ridingStatus(player)).append('\n');
         out.append("滑翔: ").append(player.isFallFlying()).append("；在地面: ").append(player.onGround()).append('\n');
+        out.append("水中状态: ").append(adris.altoclef.util.helpers.SwimNavigation.status(mod)).append('\n');
         if (adris.altoclef.util.helpers.BoatNavigation.getControlledBoat(player) != null)
             out.append("船导航: ").append(adris.altoclef.util.helpers.BoatNavigation.status(mod)).append('\n');
         else if (adris.altoclef.util.helpers.MountedNavigation.getControlledHorse(player) != null)

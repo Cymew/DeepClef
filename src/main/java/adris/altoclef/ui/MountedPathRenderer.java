@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.MountedNavigation;
 import adris.altoclef.util.helpers.BoatNavigation;
 import adris.altoclef.util.helpers.ElytraNavigation;
+import adris.altoclef.util.helpers.SwimNavigation;
 import baritone.Baritone;
 import baritone.api.Settings;
 import baritone.api.event.events.RenderEvent;
@@ -37,15 +38,16 @@ public final class MountedPathRenderer implements AbstractGameEventListener {
     public void onRenderPass(RenderEvent event) {
         if (!AltoClef.inGame() || !_mod.getTaskRunner().isActive()) return;
         boolean flying = ElytraNavigation.getRenderPlayer() != null;
-        Entity horse = flying ? ElytraNavigation.getRenderPlayer() : MountedNavigation.getRenderHorse();
+        boolean swimming = SwimNavigation.getRenderPlayer() != null;
+        Entity horse = swimming ? SwimNavigation.getRenderPlayer() : flying ? ElytraNavigation.getRenderPlayer() : MountedNavigation.getRenderHorse();
         boolean boating = !flying && horse == null && BoatNavigation.getRenderBoat() != null;
         if (boating) horse = BoatNavigation.getRenderBoat();
         if (horse == null || horse.level() != _mod.level()) return;
         Settings settings = Baritone.settings();
         // Snapshot the immutable route once; all geometry below uses these world points.
-        List<Vec3> path = flying ? ElytraNavigation.getRenderPath() : boating ? BoatNavigation.getRenderPath() : MountedNavigation.getRenderPath();
-        Set<Integer> jumps = flying || boating ? Set.of() : MountedNavigation.getRenderJumpIndices();
-        Goal goal = flying ? ElytraNavigation.getRenderGoal() : boating ? BoatNavigation.getRenderGoal() : MountedNavigation.getRenderGoal();
+        List<Vec3> path = swimming ? SwimNavigation.getRenderPath() : flying ? ElytraNavigation.getRenderPath() : boating ? BoatNavigation.getRenderPath() : MountedNavigation.getRenderPath();
+        Set<Integer> jumps = swimming || flying || boating ? Set.of() : MountedNavigation.getRenderJumpIndices();
+        Goal goal = swimming ? SwimNavigation.getRenderGoal() : flying ? ElytraNavigation.getRenderGoal() : boating ? BoatNavigation.getRenderGoal() : MountedNavigation.getRenderGoal();
         if (settings.renderGoal.value && goal != null) {
             PathRenderer.drawGoal(event.getModelViewStack(), _mod.getClientBaritone().getPlayerContext(),
                     goal, event.getPartialTicks(), settings.colorGoalBox.value);

@@ -54,6 +54,13 @@ public class DsCommand extends Command {
             return;
         }
         if (DeepSeekAgent.isBusy()) {
+            if (!DeepSeekAgent.isSessionValid(mod)) {
+                // The running agent belongs to another save; never answer with it.
+                DeepSeekAgent.cancel();
+                mod.logWarning("上一个存档的 @ds 任务已终止，请重新发送指令。");
+                finish();
+                return;
+            }
             // Interjection: inject the new instruction into the running task.
             DeepSeekAgent.interject(instruction);
             mod.log("已插话给正在运行的 @ds 任务: " + instruction);

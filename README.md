@@ -40,6 +40,13 @@ The entire AltoClef task system was ported and adapted to 26.3:
 - **New blocks & items**: copper equipment and building family, pale oak & poplar woods, sulfur family, leaf litter (used as fuel), straw beds, cushions, harnesses, craftable saddle / name tag / lodestone, and more
 - **New recipes & smelting** catalogue, including the full colored wool/cushion/harness loops
 
+### 🏊 Swimming and oxygen-aware navigation
+
+- `@swim goto <x> <y> <z>` follows a rolling 3D route inside loaded water; `@swim surface <x> <z>` crosses along the surface.
+- `@swim ascend` finds a breathable refuge and replenishes air; `@swim status` reports actual oxygen and navigation state.
+- Ordinary `@goto` falls back to swimming when a water crossing has no usable boat, then resumes walking on shore.
+- Air reserves account for the return route. The agent can use existing air pockets and bubble columns, sneak near magma, or place a carried wooden door when a reachable refuge is unavailable.
+- DeepSeek uses `altoclef_swim` and receives real completion/failure results. Explicit swimming trips start in water; no automatic door gathering or bubble-column construction is performed.
 ### 💬 Multiplayer chat awareness
 
 DeepClef observes player chat in the current connection and can respond:

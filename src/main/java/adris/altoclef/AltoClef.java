@@ -78,6 +78,9 @@ public class AltoClef implements ModInitializer {
     private CommandStatusOverlay _commandStatusOverlay;
     // DeepSeek key prompt bookkeeping
     private boolean _deepSeekKeyPrompted = false;
+    // World/connection identity, used to drop bot state when the save changes
+    private net.minecraft.client.multiplayer.ClientLevel _lastWorld;
+    private net.minecraft.client.multiplayer.ClientPacketListener _lastConnection;
     // Settings
     private adris.altoclef.Settings _settings;
     // Misc managers/input
@@ -209,6 +212,11 @@ public class AltoClef implements ModInitializer {
     private void onClientTick() {
         runEnqueuedPostInits();
 
+        // Save switch: nothing from the previous world may keep running. Without
+        // this the @ds agent (and its conversation/task) survived across saves and
+        // the model answered with the old save's context.
+        checkWorldSwitch();
+
         _inputControls.onTickPre();
 
         // Cancel shortcut
@@ -243,6 +251,7 @@ public class AltoClef implements ModInitializer {
         MountedNavigation.endTick(this);
         BoatNavigation.endTick(this);
         adris.altoclef.util.helpers.ElytraNavigation.endTick(this);
+        adris.altoclef.util.helpers.SwimNavigation.endTick(this);
 
         _butler.tick();
         if (!cancelShortcut && _chatService != null) _chatService.tick();
@@ -252,6 +261,34 @@ public class AltoClef implements ModInitializer {
     }
 
     /// GETTERS AND SETTERS
+
+    /**
+     * Detects a save/server switch and drops every piece of bot state that
+     * belonged to the previous world: the running {@code @ds} agent (its
+     * conversation and background task), the user task chain, combat intent and
+     * input holds. Chat history itself is per-save and lives in the save folder.
+     */
+    private void checkWorldSwitch() {
+        net.minecraft.client.multiplayer.ClientLevel world = level();
+        net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (world == _lastWorld && connection == _lastConnection) return;
+        boolean switching = _lastWorld != null || _lastConnection != null;
+        _lastWorld = world;
+        _lastConnection = connection;
+        if (!switching) return; // first join of this game session
+
+        adris.altoclef.util.DeepSeekAgent.cancel();
+        _userTaskChain.cancel(this);
+        if (_taskRunner.getCurrentTaskChain() != null) {
+            _taskRunner.getCurrentTaskChain().stop(this);
+        }
+        adris.altoclef.util.helpers.CombatPreferences.setStyle(
+                adris.altoclef.util.helpers.CombatPreferences.Style.AUTO);
+        adris.altoclef.util.helpers.PvpCombat.reset(this);
+        adris.altoclef.util.helpers.BowCombat.reset(this);
+        adris.altoclef.util.helpers.SpearHelper.stopCharging(this);
+        Debug.logInternal("[DeepClef] world changed: bot state and @ds session reset");
+    }
 
     private void onClientRenderOverlay(GuiGraphicsExtractor extractor) {
         _commandStatusOverlay.render(this, extractor);

@@ -139,3 +139,11 @@ AltoClef 的经典指令全部可用：`@help`、`@get`、`@goto`、`@food`、`@
 - 内置 Baritone：**LGPL-3.0**（见 `src/main/resources/licenses/`）
 
 AI 功能是可选的——不填 API Key 时，DeepClef 就是一份完全离线的 AltoClef 26.3 移植版。
+
+## 游泳与补氧
+
+- `@swim goto <x> <y> <z>`：水体内三维滚动寻路；`@swim surface <x> <z>`：沿表层跨水。
+- `@swim ascend`：寻找可呼吸位置并补氧；`@swim status`：实际氧气与导航状态。
+- 普通 `@goto` 在没有成功使用船的水路上自动游泳，抵岸后继续步行。
+- 按撤回路程预留氧气，利用水面、空气空间、已有气泡柱；靠近岩浆潜行，必要时使用携带的木门创建空气空间。
+- DeepSeek 新增 `altoclef_swim`。显式游泳需先在水中，不自动采集门或建造气泡柱。

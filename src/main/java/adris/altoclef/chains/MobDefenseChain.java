@@ -121,7 +121,7 @@ public class MobDefenseChain extends SingleTaskChain {
     public boolean isEmergencyActionPlanned() { return _plan.emergency(); }
 
     private Plan detectPlan(AltoClef mod) {
-        if (!AltoClef.inGame() || ElytraNavigation.ownsFlight(mod) || !mod.getModSettings().isMobDefense()) return Plan.NONE;
+        if (!AltoClef.inGame() || (ElytraNavigation.ownsFlight(mod) || adris.altoclef.util.helpers.SwimNavigation.needsPriority(mod)) || !mod.getModSettings().isMobDefense()) return Plan.NONE;
         LocalPlayer player = mod.getPlayer();
         int tick = player.tickCount;
         if (_observedPlayer != player) {
@@ -503,7 +503,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     @Override
     public void onTickFinished(AltoClef mod, TaskChain selected) {
-        if (!AltoClef.inGame() || ElytraNavigation.ownsFlight(mod) || !mod.getModSettings().isMobDefense()
+        if (!AltoClef.inGame() || (ElytraNavigation.ownsFlight(mod) || adris.altoclef.util.helpers.SwimNavigation.needsPriority(mod)) || !mod.getModSettings().isMobDefense()
                 || !(selected instanceof UserTaskChain) || SpearHelper.isCombatActive()
                 || _targetEntity != null || mod.getPlayer().isUsingItem()
                 || selected.getTasks().stream().anyMatch(task -> task instanceof AbstractKillEntityTask)) return;

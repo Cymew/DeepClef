@@ -47,6 +47,7 @@ public class TaskRunner {
         MountedNavigation.prepareFrame(_mod, maxChain, maxPriority);
         BoatNavigation.prepareFrame(_mod, maxChain, maxPriority);
         ElytraNavigation.prepareFrame(_mod, maxChain);
+        adris.altoclef.util.helpers.SwimNavigation.prepareFrame(_mod, maxChain);
         if (maxChain != null) {
             maxChain.tick(_mod);
         }
@@ -83,6 +84,7 @@ public class TaskRunner {
         MountedNavigation.releaseAll(_mod);
         BoatNavigation.releaseAll(_mod);
         ElytraNavigation.releaseAll(_mod);
+        adris.altoclef.util.helpers.SwimNavigation.releaseAll(_mod);
 
         Debug.logMessage("Stopped");
     }

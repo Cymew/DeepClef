@@ -19,8 +19,9 @@ public abstract class CameraSpearAimMixin {
             allow = 2
     )
     private float altoclef$smoothSpearYaw(Entity entity, float partialTicks) {
-        return ElytraNavigation.getRenderYaw(entity, partialTicks, MountedNavigation.getRenderYaw(entity, partialTicks,
-                SpearHelper.getRenderYaw(entity, partialTicks, entity.getViewYRot(partialTicks))));
+        return adris.altoclef.util.helpers.SwimNavigation.getRenderYaw(entity, partialTicks,
+                ElytraNavigation.getRenderYaw(entity, partialTicks, MountedNavigation.getRenderYaw(entity, partialTicks,
+                SpearHelper.getRenderYaw(entity, partialTicks, entity.getViewYRot(partialTicks)))));
     }
 
     @Redirect(
@@ -30,7 +31,8 @@ public abstract class CameraSpearAimMixin {
             allow = 2
     )
     private float altoclef$smoothSpearPitch(Entity entity, float partialTicks) {
-        return ElytraNavigation.getRenderPitch(entity, partialTicks, MountedNavigation.getRenderPitch(entity, partialTicks,
-                SpearHelper.getRenderPitch(entity, partialTicks, entity.getViewXRot(partialTicks))));
+        return adris.altoclef.util.helpers.SwimNavigation.getRenderPitch(entity, partialTicks,
+                ElytraNavigation.getRenderPitch(entity, partialTicks, MountedNavigation.getRenderPitch(entity, partialTicks,
+                SpearHelper.getRenderPitch(entity, partialTicks, entity.getViewXRot(partialTicks)))));
     }
 }

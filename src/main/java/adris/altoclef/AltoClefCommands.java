@@ -44,7 +44,9 @@ public class AltoClefCommands {
                 new BedCommand(),
                 new BoatCommand(),
                 new ElytraCommand(),
-                new SmithingCommand()
+                new SwimCommand(),
+                new SmithingCommand(),
+                new PortalCommand()
                 //new TestMoveInventoryCommand(),
                 //    new TestSwapInventoryCommand()
         );

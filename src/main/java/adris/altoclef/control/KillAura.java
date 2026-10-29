@@ -75,7 +75,7 @@ public class KillAura {
     public void tickEnd(AltoClef mod, boolean allowShielding) {
         // Flight acquired its hand/input lease after the old combat owner stopped.
         // Background cleanup must not release a flight jump or rocket use here.
-        if (ElytraNavigation.ownsFlight(mod)) return;
+        if ((ElytraNavigation.ownsFlight(mod) || adris.altoclef.util.helpers.SwimNavigation.needsPriority(mod))) return;
         // The spear task owns facing, movement and use-item input for its entire attack cycle.
         if (SpearHelper.isCombatActive() || BowCombat.isActive() || MountedNavigation.isActive() || mod.getFoodChain().isTryingToEat()) {
             stopShielding(mod);

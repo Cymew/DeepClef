@@ -78,6 +78,9 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     private int _automaticElytraStartTick, _automaticElytraLastProbe = Integer.MIN_VALUE / 2, _automaticElytraRetryAfter;
     private Object _automaticElytraWorld;
     private Vec3 _automaticElytraBlockedOrigin;
+    private adris.altoclef.util.helpers.SwimNavigation _swimming;
+    private int _swimRetryAfter;
+    public boolean hasSwimController() { return _swimming != null; }
 
     // This happens all the time in mineshafts and swamps/jungles
 
@@ -296,6 +299,16 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             return null;
         }
         MountedNavigation.release(mod, this);
+        // Continue the same water controller before considering another travel mode.
+        if (_swimming != null) {
+            var outcome = _swimming.tick(mod);
+            setDebugState(_swimming.result());
+            _checker.reset(); stuckCheck.reset();
+            if (outcome == adris.altoclef.util.helpers.SwimNavigation.Outcome.RUNNING) return null;
+            _swimming.release(mod); _swimming = null;
+            _swimRetryAfter = mod.getPlayer().tickCount + 100;
+            return null;
+        }
         if (shouldProbeAutomaticElytra(mod)) {
             BlockPos destination = automaticElytraDestination(_cachedGoal);
             _automaticElytraTask = ElytraFlightTask.travel(destination.getX(), destination.getZ());
@@ -323,6 +336,22 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 _checker.reset(); stuckCheck.reset();
                 setDebugState("Long water route ahead; preparing a boat.");
                 return null;
+            }
+        }
+        if (allowsAutomaticBoat() && mod.getTaskRunner().getCurrentTaskChain() instanceof UserTaskChain chain
+                && chain.getCurrentTask() == this && mod.getPlayer().isInWater() && !mod.getPlayer().isPassenger()
+                && mod.getPlayer().tickCount >= _swimRetryAfter) {
+            if (_cachedGoal == null) _cachedGoal = newGoal(mod);
+            BlockPos target = automaticElytraDestination(_cachedGoal);
+            if (target != null) {
+                // Actual underwater XYZ goals use volume navigation; land/XZ trips use the surface.
+                boolean surface = _cachedGoal instanceof GoalXZ || !mod.level().hasChunkAt(target)
+                        || !mod.level().getFluidState(target).is(net.minecraft.tags.FluidTags.WATER);
+                _swimming = new adris.altoclef.util.helpers.SwimNavigation(mod, target, surface, false);
+                mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+                mod.getClientBaritone().getPathingBehavior().forceCancel();
+                _checker.reset(); stuckCheck.reset();
+                return null; // Let the previous walking child release its inputs first.
             }
         }
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
@@ -391,6 +420,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     public boolean isFinished(AltoClef mod) {
+        if (_swimming != null) return false;
         if (_automaticElytraTask != null || _automaticElytraCleanupPending || mod.getPlayer().isFallFlying()) return false;
         // Completion is queried before onTick: capture an exit even if its landing is already the goal.
         observeOrdinaryBoatExit(mod);
@@ -415,6 +445,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        if (_swimming != null) _swimming.release(mod);
         BoatNavigation.release(mod, this);
         MountedNavigation.release(mod, this);
         mod.getClientBaritone().getPathingBehavior().forceCancel();

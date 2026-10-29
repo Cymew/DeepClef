@@ -304,7 +304,7 @@ public class FoodChain extends SingleTaskChain {
 
     private boolean environmentPreventsEating(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
-        if (player == null || ElytraNavigation.ownsFlight(mod) || WorldHelper.isInNetherPortal(mod) || player.isInLava()
+        if (player == null || (ElytraNavigation.ownsFlight(mod) || adris.altoclef.util.helpers.SwimNavigation.needsPriority(mod)) || WorldHelper.isInNetherPortal(mod) || player.isInLava()
                 || mod.getMobDefenseChain().isPuttingOutFire() || !mod.getMLGBucketChain().doneMLG()
                 || mod.getMLGBucketChain().isFallingOhNo(mod) || mod.getMLGBucketChain().isChorusFruiting()) return true;
         Optional<Entity> cloud = mod.getEntityTracker().getNearestEntity(AreaEffectCloud.class);

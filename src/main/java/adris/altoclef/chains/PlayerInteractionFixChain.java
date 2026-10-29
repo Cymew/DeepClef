@@ -62,7 +62,7 @@ public class PlayerInteractionFixChain extends TaskChain {
     public void onTickFinished(AltoClef mod, TaskChain selected) {
         // Inventory duct tape must not swap stacks or release sneak while another
         // action is holding its hand, or while combat is about to begin.
-        if (!AltoClef.inGame() || ElytraNavigation.ownsFlight(mod) || selected != mod.getUserTaskChain()
+        if (!AltoClef.inGame() || (ElytraNavigation.ownsFlight(mod) || adris.altoclef.util.helpers.SwimNavigation.needsPriority(mod)) || selected != mod.getUserTaskChain()
                 || SpearHelper.isCombatActive() || mod.getFoodChain().isTryingToEat()
                 || mod.getPlayer().isUsingItem() || mod.getPlayer().isPassenger()
                 || mod.getClientBaritone().getPathingBehavior().isPathing()
