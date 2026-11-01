@@ -12,7 +12,7 @@ import java.util.Locale;
 /** Explicit boat operations; an unspecified vessel can also be launched from inventory. */
 public final class BoatCommand extends Command {
     public BoatCommand() throws CommandException {
-        super("boat", "船操作：status | board [实体ID] | goto <x> <z> | dismount",
+        super("boat", "船操作：status | board [实体ID] | goto <x> <z> | wait <等待人数> [超时秒] | dismount",
                 new Arg<>(String.class, "action", "status", 0),
                 new Arg<>(String.class, "entityId或x", "", 1, false),
                 new Arg<>(String.class, "z", "", 2, false));
@@ -58,11 +58,22 @@ public final class BoatCommand extends Command {
                         throw new CommandException("船目的地超出世界坐标范围。");
                     yield BoatControlTask.travel(x, z, null);
                 }
+                case "wait" -> {
+                    if (count < 2 || count > 3)
+                        throw new CommandException("用法：boat wait <等待人数> [超时秒]（先登船或自动放船）");
+                    int wait = Integer.parseInt(values[1]);
+                    int seconds = count == 3 ? Integer.parseInt(values[2]) : 60;
+                    if (wait < 1 || wait > BoatControlTask.MAX_WAIT_PASSENGERS)
+                        throw new CommandException("等待人数需为 1~" + BoatControlTask.MAX_WAIT_PASSENGERS + "。");
+                    if (seconds < 5 || seconds > 600)
+                        throw new CommandException("超时秒数需为 5~600。");
+                    yield BoatControlTask.board(null, wait, seconds * 20);
+                }
                 case "dismount" -> {
                     if (count != 1) throw new CommandException("用法：boat dismount");
                     yield BoatControlTask.dismount();
                 }
-                default -> throw new CommandException("未知船操作；可用 status、board、goto、dismount。");
+                default -> throw new CommandException("未知船操作；可用 status、board、goto、wait、dismount。");
             };
         } catch (NumberFormatException ex) {
             throw new CommandException("船实体 ID 和 XZ 坐标必须是整数。");

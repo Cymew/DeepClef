@@ -1,0 +1,21 @@
+allprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin('java')) {
+            def testOutput = layout.buildDirectory.dir('portal-regression')
+            def compilePortal = tasks.register('compilePortalRegression', JavaCompile) {
+                dependsOn tasks.named('classes')
+                source = fileTree(new File(rootProject.projectDir, 'tests/portal')) { include '*.java' }
+                classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+                destinationDirectory = testOutput
+                options.encoding = 'UTF-8'
+                javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+            tasks.register('portalRegression', JavaExec) {
+                dependsOn compilePortal
+                classpath = sourceSets.main.runtimeClasspath + files(testOutput)
+                mainClass = 'adris.altoclef.portal.PortalCastingRegression'
+                javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+        }
+    }
+}

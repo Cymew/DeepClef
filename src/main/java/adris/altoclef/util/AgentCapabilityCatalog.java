@@ -27,20 +27,22 @@ public final class AgentCapabilityCatalog {
             new Entry("swimming", "三维游泳与补氧",
                     "`@swim status`；`@swim goto 100 45 200`；`@swim surface 500 200`；`@swim ascend`",
                     "altoclef_swim",
-                    "显式游泳需先在水中；普通goto缺船时自动沿表层跨水并接回陆路。仅规划已加载水体，连续跟随三维路线。"
+                    "可在水中、门内空气空间或附近8格内有水的岸边启动；补氧后保留原目标继续。长距离水下目标会先上浮、沿水面接近，再验证末段下潜与返回空气的氧气预算。普通goto缺船时自动沿表层跨水并接回陆路。仅规划已加载水体，连续跟随三维路线。"
                     + "提前按剩余氧气和撤回路程补氧：水面、门内空气、灵魂沙/岩浆气泡柱；岩浆附近潜行。必要时使用携带的木门，不采集材料。"
                     + "模型水下操作前检查氧气；不要把附魔随机延长或尚未成功放置的门当作已补氧。goto目标需真实水体，不能穿墙。",
                     "@ds 游到水下 X=100 Y=45 Z=200，注意补充氧气", "swim swimming oxygen 游泳 氧气 补氧 水下 潜水 表层 气泡 门"),
             new Entry("boat", "船与竹筏驾驶",
-                    "`@boat status`；`@boat board [ID]`；`@boat goto 100 200`；`@boat dismount`",
+                    "`@boat status`；`@boat board [ID]`；`@boat goto 100 200`；`@boat wait 1 [超时秒]`；`@boat dismount`",
                     "altoclef_boat",
-                    "水路寻路、驾驶与安全下船；到达水上目标后仍留船上。已乘船时普通 @goto 也使用船导航。",
-                    "@ds 坐船去 X=100 Z=200", "水路 航行 boat raft"),
+                    "水路寻路、驾驶与安全下船；到达水上目标后仍留船上。已乘船时普通 @goto 也使用船导航。"
+                            + "需要等其他玩家上船时用 wait（模型用 wait_passengers 参数）：先占驾驶位等待，人数到齐才开船；"
+                            + "超时不开船并返回当前船上人数。",
+                    "@ds 在水上放一艘船，坐上去等我朋友上船后再载他去 X=100 Z=200", "水路 航行 boat raft 载人 乘客 等待"),
             new Entry("nether_portal", "浇筑下界传送门",
                     "`@portal`（前往/浇筑）；`@portal cast`（就地浇筑）；或 `@goto nether`",
                     "altoclef_execute",
-                    "主世界的浇筑法：用水桶 + 附近岩浆自动搭浇筑框、舀岩浆、浇水成黑曜石、点火。"
-                            + "缺工具时它会自己收集桶、水桶、打火石；**不需要钻石镐**。只有在拿不到水或附近没有岩浆时，"
+                    "主世界的单桶浇筑法：只需一个水桶 + 附近岩浆；自动开槽、固定高处水源，反复用同一个桶运岩浆，最后收水点火。"
+                            + "优先利用池边已有黑曜石，深池省去补底，浅池自动补底；也支持平地挖槽。缺工具时会收集一个桶、水、辅助方块和打火石；**不需要钻石镐**。只有在拿不到水或附近没有岩浆时，"
                             + "才会退回挖黑曜石路线（那时才需要钻石镐）。已有传送门时 @portal 会直接走过去。",
                     "@ds 用水桶浇筑一个下界传送门", "下界 传送门 浇筑 黑曜石 岩浆 水桶 portal nether obsidian"),
             new Entry("auto_boat", "长水路自动放船",
@@ -133,7 +135,7 @@ public final class AgentCapabilityCatalog {
     }
 
     public static String markdown() {
-        StringBuilder out = new StringBuilder("# 新增功能速查（更新至2026-10-29）\n\n");
+        StringBuilder out = new StringBuilder("# 新增功能速查（更新至2026-11-01）\n\n");
         out.append("| 功能 | 使用方法 | 条件与行为 |\n|---|---|---|\n");
         for (Entry entry : ENTRIES) out.append(entry.row());
         out.append("\nDeepSeek直接输入：\n\n");

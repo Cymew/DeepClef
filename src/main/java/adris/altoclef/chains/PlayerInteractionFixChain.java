@@ -113,7 +113,7 @@ public class PlayerInteractionFixChain extends TaskChain {
         // Refresh inventory
         if (_generalDuctTapeSwapTimeout.elapsed()) {
             if (!mod.getControllerExtras().isBreakingBlock()) {
-                Debug.logMessage("Refreshed inventory...");
+                Debug.logMessage("Invalidated inventory cache (no slot clicks).");
                 mod.getSlotHandler().refreshInventory();
                 _generalDuctTapeSwapTimeout.reset();
                 return Float.NEGATIVE_INFINITY;

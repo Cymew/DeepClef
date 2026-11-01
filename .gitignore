@@ -123,5 +123,20 @@ run/
 # Generated/rotated runtime & build logs
 logs/
 
+# Internal development material (handoff docs, promo plans, audits, todos, generated catalogues).
+# Kept local only — never published.
+/docs/
+/todos.md
+/CataloguedResources.txt
+/develop.md
+
+# Local scratch files
+*.bak
+*.orig
+*.rej
+*.tmp
+*.local
+local.properties
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar

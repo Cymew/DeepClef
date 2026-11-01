@@ -174,6 +174,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
      */
     @Override
     protected void onStart(AltoClef mod) {
+        mod.getBehaviour().push();
+        // Mining rays pass through liquids, even when a parent was collecting a source.
+        mod.getBehaviour().setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid.NONE);
         // Cancel any ongoing pathing behavior.
         mod.getClientBaritone().getPathingBehavior().forceCancel();
 
@@ -218,6 +221,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        if (isFinished(mod)) {
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+            return null;
+        }
+        Optional<Rotation> reach = LookHelper.getReach(_pos);
+        // Standing still while mining (especially underwater) is not a movement failure.
+        if (reach.isPresent()) _moveChecker.reset();
         // Check if there is white wool at the specified position
         if (mod.level().getBlockState(_pos).getBlock() == Blocks.WOOL.white()) {
             // Iterate over all entities in the world
@@ -291,7 +301,6 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
         }
 
-        Optional<Rotation> reach = LookHelper.getReach(_pos);
         if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
                 && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
@@ -328,12 +337,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
         } else {
             setDebugState("Getting to block...");
-            if (isMining && mod.getPlayer().isInWater()) {
-                isMining = false;
-                mod.getBlockTracker().requestBlockUnreachable(_pos);
-            } else {
-                isMining = false;
-            }
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+            isMining = false;
             boolean isCloseToMoveBack = _pos.closerThan(BlockPos.containing(mod.getPlayer().position()), 2);
             if (isCloseToMoveBack) {
                 if (!mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
@@ -347,8 +352,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
             if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 mod.getClientBaritone().getBuilderProcess().onLostControl();
-                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(mod.level().getBlockState(_pos.above()).getBlock() ==
-                        Blocks.SNOW ? new GoalBlock(_pos) : new GoalNear(_pos, 1));
+                BlockPos miningStand = findMiningStand(mod.level(), _pos, mod.getPlayer().blockPosition(),
+                        mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance());
+                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(miningStand != null
+                        ? new GoalBlock(miningStand) : new GoalNear(_pos, 1));
             }
         }
         return null;
@@ -363,6 +370,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
      */
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        mod.getBehaviour().pop();
         // Cancel Baritone pathing
         mod.getClientBaritone().getPathingBehavior().forceCancel();
 
@@ -392,7 +400,42 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         // Get the block state at the specified position and check if it's air
         BlockState blockState = mod.level().getBlockState(_pos);
-        return blockState.isAir();
+        return isClearedState(blockState);
+    }
+
+    public static boolean isClearedState(BlockState state) {
+        // Water may fill the hole immediately. Waterlogged solid blocks still need mining.
+        return state.isAir() || state.is(Blocks.WATER) || state.is(Blocks.LAVA);
+    }
+
+    /** A nearby coordinate is not enough: the block must be visible from a supported stance. */
+    public static BlockPos findMiningStand(net.minecraft.world.level.BlockGetter world, BlockPos target,
+                                          BlockPos player, double range) {
+        BlockPos best = null;
+        double score = Double.MAX_VALUE;
+        for (BlockPos feet : BlockPos.betweenClosed(target.offset(-4, -3, -4), target.offset(4, 2, 4))) {
+            if (feet.equals(player) || feet.below().equals(target)) continue;
+            if (!world.getBlockState(feet).isAir() || !world.getBlockState(feet.above()).isAir()) continue;
+            BlockState floor = world.getBlockState(feet.below());
+            if (!floor.isSolidRender() || !floor.getFluidState().isEmpty()) continue;
+            var eye = net.minecraft.world.phys.Vec3.atBottomCenterOf(feet).add(0, 1.62, 0);
+            boolean visible = false;
+            for (var side : net.minecraft.core.Direction.values()) {
+                var point = net.minecraft.world.phys.Vec3.atCenterOf(target)
+                        .add(net.minecraft.world.phys.Vec3.atLowerCornerOf(side.getUnitVec3i()).scale(.49));
+                if (eye.distanceTo(point) > range - .15) continue;
+                var hit = world.clip(new net.minecraft.world.level.ClipContext(eye, point,
+                        net.minecraft.world.level.ClipContext.Block.OUTLINE, net.minecraft.world.level.ClipContext.Fluid.NONE,
+                        net.minecraft.world.phys.shapes.CollisionContext.empty()));
+                if (hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK && hit.getBlockPos().equals(target)) {
+                    visible = true;
+                    break;
+                }
+            }
+            double distance = feet.distSqr(player);
+            if (visible && distance < score) { best = feet.immutable(); score = distance; }
+        }
+        return best;
     }
 
     /**

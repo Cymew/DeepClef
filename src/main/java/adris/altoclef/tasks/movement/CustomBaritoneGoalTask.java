@@ -347,7 +347,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 // Actual underwater XYZ goals use volume navigation; land/XZ trips use the surface.
                 boolean surface = _cachedGoal instanceof GoalXZ || !mod.level().hasChunkAt(target)
                         || !mod.level().getFluidState(target).is(net.minecraft.tags.FluidTags.WATER);
-                _swimming = new adris.altoclef.util.helpers.SwimNavigation(mod, target, surface, false);
+                _swimming = new adris.altoclef.util.helpers.SwimNavigation(mod, target, surface, false, true);
                 mod.getClientBaritone().getCustomGoalProcess().onLostControl();
                 mod.getClientBaritone().getPathingBehavior().forceCancel();
                 _checker.reset(); stuckCheck.reset();

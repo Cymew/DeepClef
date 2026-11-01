@@ -15,8 +15,20 @@ import static adris.altoclef.util.helpers.SwimRoutePlanner.Kind;
 public final class SwimTerrain implements SwimRoutePlanner.Terrain {
     private final AltoClef mod;
     private final double height;
+    private final BlockPos origin;
     private final Map<BlockPos,Kind> cache=new HashMap<>();
-    public SwimTerrain(AltoClef mod) { this.mod=mod; height=mod.getPlayer().isSwimming() ? .6 : mod.getPlayer().getBbHeight(); }
+    public SwimTerrain(AltoClef mod) { this.mod=mod; origin=mod.getPlayer().blockPosition(); height=mod.getPlayer().isSwimming() ? .6 : mod.getPlayer().getBbHeight(); }
+    /** A bounded entry probe; finding water does not bypass the route's collision checks. */
+    public boolean hasNearbyWater(BlockPos centre) {
+        for(int r=0;r<=8;r++)for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++) {
+            if(Math.max(Math.abs(dx),Math.abs(dz))!=r)continue;
+            for(int dy=-3;dy<=3;dy++) {
+                BlockPos p=centre.offset(dx,dy,dz);
+                if(water(p) && clearBody(point(p)))return true;
+            }
+        }
+        return false;
+    }
     public boolean loaded(BlockPos p) { return p.getY()>=mod.level().getMinY() && p.getY()<mod.level().getMaxY()
             && mod.level().hasChunkAt(p); }
     public boolean water(BlockPos p) { return loaded(p) && mod.level().getFluidState(p).is(FluidTags.WATER); }
@@ -43,11 +55,13 @@ public final class SwimTerrain implements SwimRoutePlanner.Terrain {
         if (water(p)) return dry(p.above()) && breathableAt(point) && clearBody(point.add(0,.35,0)) ? Kind.SURFACE : Kind.WATER;
         if (!dry(p)) return Kind.BLOCKED;
         boolean besideWater=water(p.below()) || water(p.north()) || water(p.south()) || water(p.east()) || water(p.west());
-        if (!besideWater) return Kind.BLOCKED;
         if (state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock) return breathableAt(point) ? Kind.AIR : Kind.WATER;
+        boolean localEntry=Math.abs(p.getX()-origin.getX())<=8 && Math.abs(p.getZ()-origin.getZ())<=8
+                && Math.abs(p.getY()-origin.getY())<=3;
+        if (!besideWater && !localEntry) return Kind.BLOCKED;
         if (mod.level().getBlockState(p.below()).isFaceSturdy(mod.level(),p.below(),net.minecraft.core.Direction.UP)
                 && clearBox(new AABB(point.x-.31,p.getY(),point.z-.31,point.x+.31,p.getY()+1.8,point.z+.31)))
-            return Kind.SHORE;
+            return breathableAt(point) ? Kind.SHORE : Kind.WATER;
         // An air cell must have water support; free space above a cliff is not a swimming node.
         return water(p.below()) ? (breathableAt(point) ? Kind.AIR : Kind.WATER) : Kind.BLOCKED;
     }

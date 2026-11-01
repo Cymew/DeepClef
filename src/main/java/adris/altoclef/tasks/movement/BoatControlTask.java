@@ -32,9 +32,18 @@ public final class BoatControlTask extends Task {
     public enum Action { BOARD, GOTO, DISMOUNT }
 
     private static final double SEARCH_RADIUS = 64;
+    /** 默认等待其他玩家上船的超时（60 秒）。 */
+    public static final int DEFAULT_WAIT_TIMEOUT_TICKS = 60 * 20;
+    /** 最多等待的其他乘客数量（普通船/竹筏通常只有 1 个乘客位）。 */
+    public static final int MAX_WAIT_PASSENGERS = 4;
     private final Action _action;
     private final Integer _requestedId;
     private final GoalXZ _goal;
+    /** 登船后需要等待的其他玩家数量（0 = 不等，立即继续开船/完成）。 */
+    private final int _waitForPassengers;
+    private final int _waitTimeoutTicks;
+    private int _waitTicks;
+    private boolean _waited;
     private AltoClef _mod;
     private LocalPlayer _player;
     private Level _level;
@@ -62,17 +71,42 @@ public final class BoatControlTask extends Task {
     private int _boardingSlot = -1;
 
     private BoatControlTask(Action action, Integer entityId, GoalXZ goal) {
+        this(action, entityId, goal, 0, DEFAULT_WAIT_TIMEOUT_TICKS);
+    }
+
+    private BoatControlTask(Action action, Integer entityId, GoalXZ goal,
+                            int waitForPassengers, int waitTimeoutTicks) {
         _action = action;
         _requestedId = entityId;
         _goal = goal;
+        _waitForPassengers = Math.max(0, Math.min(MAX_WAIT_PASSENGERS, waitForPassengers));
+        _waitTimeoutTicks = Math.max(20, Math.min(6000, waitTimeoutTicks));
     }
 
     public static BoatControlTask board(Integer entityId) {
-        return new BoatControlTask(Action.BOARD, entityId, null);
+        return board(entityId, 0);
+    }
+
+    public static BoatControlTask board(Integer entityId, int waitForPassengers) {
+        return board(entityId, waitForPassengers, DEFAULT_WAIT_TIMEOUT_TICKS);
+    }
+
+    /** 登船（必要时自动放船），并先等待 {@code waitForPassengers} 名其他玩家上船再完成。 */
+    public static BoatControlTask board(Integer entityId, int waitForPassengers, int waitTimeoutTicks) {
+        return new BoatControlTask(Action.BOARD, entityId, null, waitForPassengers, waitTimeoutTicks);
     }
 
     public static BoatControlTask travel(int x, int z, Integer entityId) {
-        return new BoatControlTask(Action.GOTO, entityId, new GoalXZ(x, z));
+        return travel(x, z, entityId, 0);
+    }
+
+    public static BoatControlTask travel(int x, int z, Integer entityId, int waitForPassengers) {
+        return travel(x, z, entityId, waitForPassengers, DEFAULT_WAIT_TIMEOUT_TICKS);
+    }
+
+    /** 登上船并等到 {@code waitForPassengers} 名其他玩家上船后，再开始驾驶到目标 XZ。 */
+    public static BoatControlTask travel(int x, int z, Integer entityId, int waitForPassengers, int waitTimeoutTicks) {
+        return new BoatControlTask(Action.GOTO, entityId, new GoalXZ(x, z), waitForPassengers, waitTimeoutTicks);
     }
 
     public static BoatControlTask dismount() {
@@ -132,9 +166,32 @@ public final class BoatControlTask extends Task {
                 setDebugState("Stopping the approach before controlling the boat.");
                 return null;
             }
+            // Optional passenger wait: stay in the driver seat without touching the controls
+            // until the requested number of other players are aboard (or the timeout expires).
+            if (_waitForPassengers > 0 && !_waited) {
+                int others = Math.max(0, controlled.getPassengers().size() - 1);
+                if (others < _waitForPassengers) {
+                    BoatNavigation.hold(mod, this); // keep the lease + brakes; no driving inputs
+                    if (nextTick && ++_waitTicks > _waitTimeoutTicks) {
+                        finish("等待乘客超时：已等 " + String.format(java.util.Locale.ROOT, "%.1f", _waitTicks / 20.0)
+                                + " 秒，船上现有 " + (others + 1) + " 人，需要 " + (_waitForPassengers + 1)
+                                + " 人；仍未开船（船还在原地，可再次调用并延长超时）。");
+                        return null;
+                    }
+                    setDebugState("Waiting for passengers: " + others + "/" + _waitForPassengers
+                            + " others onboard (timeout " + (_waitTimeoutTicks / 20) + "s).");
+                    return null;
+                }
+                _waited = true;
+                setDebugState("All requested passengers are onboard (" + others + ").");
+            }
             if (_action == Action.BOARD) {
                 BoatNavigation.hold(mod, this);
-                finish("已登船并取得驾驶权，船实体 ID=" + controlled.getId() + "。");
+                int others = Math.max(0, controlled.getPassengers().size() - 1);
+                finish("已登船并取得驾驶权，船实体 ID=" + controlled.getId()
+                        + (_waitForPassengers > 0
+                        ? "；已等到 " + others + " 名其他乘客上船（共 " + (others + 1) + " 人），可以开船。"
+                        : "。"));
                 return null;
             }
             if (BoatNavigation.isGoalReached(mod, _goal)) {
@@ -380,7 +437,9 @@ public final class BoatControlTask extends Task {
         Entity vehicle = player.getVehicle();
         return vehicle.getName().getString() + " ID=" + vehicle.getId()
                 + (vehicle instanceof AbstractBoat boat
-                ? (boat.getControllingPassenger() == player ? "（船驾驶位）" : "（船乘客位，无驾驶权）") : "");
+                ? (boat.getControllingPassenger() == player ? "（船驾驶位）" : "（船乘客位，无驾驶权）")
+                + "，船上共 " + boat.getPassengers().size() + " 人"
+                : "");
     }
 
     /** Lists actual loaded boats, including chest boats and rafts, for both command and model. */
@@ -441,12 +500,15 @@ public final class BoatControlTask extends Task {
     @Override
     protected boolean isEqual(Task other) {
         return other instanceof BoatControlTask task && task._action == _action
-                && Objects.equals(task._requestedId, _requestedId) && Objects.equals(task._goal, _goal);
+                && Objects.equals(task._requestedId, _requestedId) && Objects.equals(task._goal, _goal)
+                && task._waitForPassengers == _waitForPassengers
+                && task._waitTimeoutTicks == _waitTimeoutTicks;
     }
 
     @Override
     protected String toDebugString() {
         return "Boat " + _action + (_requestedId == null ? "" : " #" + _requestedId)
-                + (_goal == null ? "" : " " + _goal.getX() + " " + _goal.getZ());
+                + (_goal == null ? "" : " " + _goal.getX() + " " + _goal.getZ())
+                + (_waitForPassengers > 0 ? " wait=" + _waitForPassengers : "");
     }
 }

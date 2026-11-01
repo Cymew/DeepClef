@@ -73,6 +73,8 @@ public class DeepSeekAgent {
             + "专门水路旅行用 altoclef_boat：先 action=status 查看船，board 可选 entity_id 登船，\n"
             + "action=goto 并给绝对整数 x、z 会先登附近空船再驾驶，action=dismount 正常下船。\n"
             + "未指定 entity_id 且附近无可用船时，会用背包普通船/竹筏放船并登船；材料不足会明确返回。指定ID不会改乘其他船。\n"
+            + "需要等其他玩家上船再开船时，给 board/goto 传 wait_passengers=N（1~4）和可选 wait_seconds（默认60）：\n"
+            + "登船后先坐驾驶位等待，人数到齐才开船；超时不开船并返回当前船上人数。\n"
             + "到达水上目标后仍留在船上。下船后背包有空间会尝试回收刚驾驶的空普通船；运输船保留。\n\n"
             + "船操作不要放进分号命令链；请分步调用 altoclef_boat，每步读取结果。\n\n"
             + "鞘翅旅行用 altoclef_elytra：status 检查装备、耐久和安全烟花，goto 给绝对整数 x、z，\n"
@@ -100,7 +102,8 @@ public class DeepSeekAgent {
             + "- 手动动作：altoclef_walk（安全寻路走 \"dx dz\" 格）、altoclef_break（挖掉相对位置的方块，如 \"0 1 0\" 头顶、\n"
             + "  \"1 0 0\" 前方——挖藏身处、开路就用它）、altoclef_place（相对位置放方块，默认 cobblestone——\n"
             + "  垫脚爬升、封洞口、搭台就用它）。\n"
-            + "- 船：altoclef_boat（status 查看船实体ID/驾驶权；board 登船；goto 到 XZ；dismount 下船）。\n"
+            + "- 船：altoclef_boat（status 查看船实体ID/驾驶权/船上人数；board 登船；goto 到 XZ；dismount 下船；\n"
+            + "  board/goto 加 wait_passengers=N 会先等 N 名其他玩家上船再开船）。\n"
             + "- 鞘翅：altoclef_elytra（status 检查；goto 飞至绝对XZ并着陆；land 就近安全着陆）。\n"
             + "- 锻造：altoclef_smithing（status/templates/source/get/duplicate/upgrade/trim）。\n"
             + "- 战斗：altoclef_combat（style 查看/设置攻击方式 auto|sword|bow|spear；attack 传 target=玩家名或实体类型；stop 停止）。\n"
@@ -108,7 +111,7 @@ public class DeepSeekAgent {
             + "  get <资源名> [数量]（获取物品）、food <数量>（收集食物）、meat <数量>（收集肉）、\n"
             + "  equip <leather|iron|gold|diamond|netherite>（穿整套护甲）、deposit [物品]（存进附近容器）、\n"
             + "  goto <x z>|<维度名>（长途移动，只给两个坐标；goto nether 会走到/浇筑下界传送门）、follow <玩家>、bed（放床设置重生点/睡觉）、\n"
-            + "  portal [cast]（浇筑下界传送门：主世界用水桶+附近岩浆自动搭框、舀岩浆和水、点火，不需要钻石镐；cast 就地浇筑。没有水/岩浆时才走挖黑曜石路线，那才需要钻石镐）、\n"
+            + "  portal [cast]（单桶浇筑下界传送门：主世界只需一个水桶+附近岩浆；开槽引水后固定水源，用同一个桶逐次运岩浆，浅池补底、深池复用底边，收水后点火，不需要钻石镐；cast 就地浇筑）、\n"
             + "  punk <玩家名> [auto|sword|bow|spear]（PvP 击杀指定玩家，可指定攻击方式；目标必须在视野内，仅限允许PvP的服务器）、\n"
             + "  boat status / boat board [实体ID] / boat goto <x> <z> / boat dismount（自然登船、驾驶与下船）、\n"
             + "  elytra status / elytra goto <x> <z> / elytra land（鞘翅起飞、巡航并着陆）、\n"
@@ -117,7 +120,7 @@ public class DeepSeekAgent {
             + "  宏任务适合大范围采集/长途移动/复杂制造；小范围动作请用上面手动工具。\n"
             + "  不得通过 execute 再调用 ds、dsh 或 dssize，避免递归启动智能体；只调用已登记的命令。\n"
             + "- 控制：altoclef_stop（停止任务）。\n\n"
-            + "游泳用altoclef_swim：goto指定水下XYZ，surface指定表层XZ，ascend先补氧。先检查氧气/食物和水下呼吸剩余时间；陆水混合行程用普通goto。\n"
+            + "游泳用altoclef_swim：goto指定水下XYZ，surface指定表层XZ，ascend先补氧。goto可自动上浮、沿水面接近目标再下潜，不要因全程水下距离超过单次氧气就放弃，也不要把抵达目标上方水面当成完成。先检查氧气/食物和水下呼吸剩余时间；陆水混合行程用普通goto。\n"
             + AgentCapabilityCatalog.prompt() + "\n"
             + "【输出】任务完成后用简短中文总结：做了什么、结果如何、遇到了什么问题。";
 
@@ -1049,13 +1052,20 @@ public class DeepSeekAgent {
                 return;
             }
             Integer entityId = args.hasNonNull("entity_id") ? boatInteger(args, "entity_id") : null;
+            int waitPassengers = args.hasNonNull("wait_passengers") ? boatInteger(args, "wait_passengers") : 0;
+            int waitSeconds = args.hasNonNull("wait_seconds") ? boatInteger(args, "wait_seconds") : 60;
+            if (waitPassengers < 0 || waitPassengers > BoatControlTask.MAX_WAIT_PASSENGERS)
+                throw new IllegalArgumentException("wait_passengers 必须是 0~" + BoatControlTask.MAX_WAIT_PASSENGERS);
+            if (waitSeconds < 5 || waitSeconds > 600)
+                throw new IllegalArgumentException("wait_seconds 必须是 5~600");
+            int waitTicks = waitSeconds * 20;
             BoatControlTask task = switch (action) {
-                case "board" -> BoatControlTask.board(entityId);
+                case "board" -> BoatControlTask.board(entityId, waitPassengers, waitTicks);
                 case "goto" -> {
                     int x = boatInteger(args, "x"), z = boatInteger(args, "z");
                     if (Math.abs((long) x) > 29_999_984 || Math.abs((long) z) > 29_999_984)
                         throw new IllegalArgumentException("目的地超出世界坐标范围");
-                    yield BoatControlTask.travel(x, z, entityId);
+                    yield BoatControlTask.travel(x, z, entityId, waitPassengers, waitTicks);
                 }
                 case "dismount" -> BoatControlTask.dismount();
                 default -> throw new IllegalArgumentException("action 必须是 status、board、goto 或 dismount");
@@ -1265,8 +1275,13 @@ public class DeepSeekAgent {
         activeCalls = null;
         toolGate.clear(); activeTicket=null; waitingTask=null;
         persist();
-        overlay.setStatus(status);
-        overlay.appendLine(status);
+        // 只有仍属于当前世界/连接的会话才更新叠加层：切存档后迟到的收尾
+        //（例如"已取消"）不能写进新存档的叠加层。
+        if (mod.level() == sessionWorld && mod.getPlayer() != null
+                && mod.getPlayer().connection == sessionConnection) {
+            overlay.setStatus(status);
+            overlay.appendLine(status);
+        }
         try {
             onDone.run();
         } catch (Throwable t) {
@@ -1416,9 +1431,11 @@ public class DeepSeekAgent {
                         "停止机器人当前正在执行的任务。",
                         m.createObjectNode().put("type", "object").set("properties", m.createObjectNode())),
                 new DeepSeekApi.ToolDef("altoclef_boat",
-                        "操作船或竹筏（含已放置箱船）。action=status 列出64格内船的ID/距离/可驾驶状态；"
+                        "操作船或竹筏（含已放置箱船）。action=status 列出64格内船的ID/距离/可驾驶状态/船上人数；"
                         + "board 可选 entity_id，正常右键登空首座船；goto 必须给绝对整数 x、z，未登船时先登附近空船再驾驶，"
                         + "可选 entity_id 指定船；未指定ID且无可用船时，自动用背包普通船/竹筏放船登船，可用已有木板制作。"
+                        + "board/goto 可给 wait_passengers=N（1~4）与 wait_seconds（5~600，默认60）：先当驾驶位等待另外 N 名玩家"
+                        + "上船后再开船；goto 的等待完成后才出发，超时则不开船并返回船上人数。"
                         + "已放置冰上船也支持同层冰路中央曲线与惯性滚动导航；冰/浮冰/蓝冰/霜冰同为道路，自动放置仅限安全水面。"
                         + "dismount 按正常潜行键下船，有空间会回收刚驾驶的空普通船，运输船保留。到达水上目标后留在船上。",
                         boatSchema(m)),
@@ -1429,7 +1446,7 @@ public class DeepSeekAgent {
                         elytraSchema(m)),
                 new DeepSeekApi.ToolDef("altoclef_swim",
                         "游泳控制：status查看实际氧气与导航；goto给绝对整数x/y/z，在已加载水体内三维滚动寻路；"
-                        + "surface给x/z沿表层游泳，ascend寻找可呼吸位置并补氧。显式旅行需先在水中；陆水混合行程用普通goto，缺船时自动游泳。"
+                        + "surface给x/z沿表层游泳，ascend寻找可呼吸位置并补氧。可从水中、门内空气空间或附近8格内有水的岸边启动，补氧后自动继续原目标；长距离陆水混合行程用普通goto，缺船时自动游泳。"
                         + "按实际氧气提前返回水面/空气空间/气泡柱，岩浆附近自动潜行；必要时使用携带的木门创建空气空间，不自动采集门。"
                         + "无可行路线会返回真实失败，不保证穿越封闭水洞；先看完成结果再开始下个任务。",
                         swimSchema(m)),
@@ -1544,6 +1561,12 @@ public class DeepSeekAgent {
                 .put("description", "可选：status 返回的船实体ID；board/goto 可用");
         properties.putObject("x").put("type", "integer").put("description", "goto 必填：目的地绝对X坐标");
         properties.putObject("z").put("type", "integer").put("description", "goto 必填：目的地绝对Z坐标");
+        properties.putObject("wait_passengers").put("type", "integer")
+                .put("minimum", 0).put("maximum", 4)
+                .put("description", "可选（board/goto）：登船后先等这么多其他玩家上船再继续，0 表示不等（默认）");
+        properties.putObject("wait_seconds").put("type", "integer")
+                .put("minimum", 5).put("maximum", 600)
+                .put("description", "可选：等待乘客的超时秒数，默认 60；超时不开船");
         schema.putArray("required").add("action");
         return schema;
     }

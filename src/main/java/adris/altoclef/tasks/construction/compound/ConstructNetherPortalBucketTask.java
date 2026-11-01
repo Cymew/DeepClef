@@ -4,283 +4,312 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
-import adris.altoclef.tasks.construction.ClearLiquidTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
-import adris.altoclef.tasks.construction.PlaceObsidianBucketTask;
-import adris.altoclef.tasks.movement.PickupDroppedItemTask;
+import adris.altoclef.tasks.construction.PlaceBlockTask;
+import adris.altoclef.tasks.construction.PortalBucketTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
-import adris.altoclef.tasks.speedrun.MarvionBeatMinecraftTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
-import adris.altoclef.util.helpers.WorldHelper;
-import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.Items;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.Vec3i;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-/**
- * Build a nether portal by casting each piece with water + lava.
- * <p>
- * Currently the most reliable portal building method.
- */
+/** Single-bucket shore casting: prime a drain, leave water running, then shuttle lava. */
 public class ConstructNetherPortalBucketTask extends Task {
-
-    // Order here matters
-    private static final Vec3i[] PORTAL_FRAME = new Vec3i[]{
-            // Left side
-            new Vec3i(0, 0, -1),
-            new Vec3i(0, 1, -1),
-            new Vec3i(0, 2, -1),
-            // Right side
-            new Vec3i(0, 0, 2),
-            new Vec3i(0, 1, 2),
-            new Vec3i(0, 2, 2),
-            // Top
-            new Vec3i(0, 3, 0),
-            new Vec3i(0, 3, 1),
-            // Bottom
-            new Vec3i(0, -1, 0),
-            new Vec3i(0, -1, 1)
-    };
-
-    private static final Vec3i[] PORTAL_INTERIOR = new Vec3i[]{
-            //Inside
-            new Vec3i(0, 0, 0),
-            new Vec3i(0, 1, 0),
-            new Vec3i(0, 2, 0),
-            new Vec3i(0, 0, 1),
-            new Vec3i(0, 1, 1),
-            new Vec3i(0, 2, 1),
-            //Outside 1
-            new Vec3i(1, 0, 0),
-            new Vec3i(1, 1, 0),
-            new Vec3i(1, 2, 0),
-            new Vec3i(1, 0, 1),
-            new Vec3i(1, 1, 1),
-            new Vec3i(1, 2, 1),
-            //Outside 2
-            new Vec3i(-1, 0, 0),
-            new Vec3i(-1, 1, 0),
-            new Vec3i(-1, 2, 0),
-            new Vec3i(-1, 0, 1),
-            new Vec3i(-1, 1, 1),
-            new Vec3i(-1, 2, 1)
-    };
-
-    // The "portalable" region includes the portal (1 x 6 x 4 structure) and an outer buffer for its construction and water bullshit.
-    // The "portal origin relative to region" corresponds to the portal origin with respect to the "portalable" region (see _portalOrigin).
-    // This can only really be explained visually, sorry!
-    private static final Vec3i PORTALABLE_REGION_SIZE = new Vec3i(4, 6, 6);
-    private static final Vec3i PORTAL_ORIGIN_RELATIVE_TO_REGION = new Vec3i(1, 0, 2);
-    private final TimerGame _lavaSearchTimer = new TimerGame(5);
-    private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
-    private final TimeoutWanderTask wanderTask = new TimeoutWanderTask(5);
-    // Stored here to cache lava blacklist
-    private final Task _collectLavaTask = TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
-    private final TimerGame _refreshTimer = new TimerGame(11);
-    private BlockPos _portalOrigin = null;
-
-    //private BlockPos _currentLavaTarget = null;
-    private BlockPos _currentDestroyTarget = null;
-    private boolean _firstSearch = false;
+    private enum Phase { FIND_SITE, STARTER, PRIME, OPEN_DRAIN, RECOVER_PRIMER, MOLD, WATER, CAST, RECOVER_WATER, DRAIN, LIGHT }
+    private static final int SEARCH_RADIUS = 24;
+    private static final Direction[] HORIZONTAL = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
+    private static final Item[] BUILD_ITEMS = {Items.DIRT, Items.COBBLESTONE, Items.NETHERRACK, Items.COBBLED_DEEPSLATE};
+    private final TimerGame searchTimer = new TimerGame(5);
+    private final TimerGame fluidTimer = new TimerGame(0.75);
+    private final TimerGame warningTimer = new TimerGame(10);
+    private final TimeoutWanderTask searchWander = new TimeoutWanderTask(5);
+    private Phase phase = Phase.FIND_SITE;
+    private PortalCastPlan plan;
+    private boolean firstSearch = true;
+    private final Set<BlockPos> ownedMold = new HashSet<>();
+    private BlockPos lavaTarget;
+    private BlockPos lastFrame;
 
     @Override
     protected void onStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.LAVA);
-
-        _currentDestroyTarget = null;
-
         mod.getBehaviour().push();
-
-        // Avoid breaking portal frame if we're obsidian.
-        // Also avoid placing on the lava + water
-        // Also avoid breaking the cast frame
-        mod.getBehaviour().avoidBlockBreaking(block -> {
-            if (_portalOrigin != null) {
-                // Don't break frame
-                for (Vec3i framePosRelative : PORTAL_FRAME) {
-                    BlockPos framePos = _portalOrigin.offset(framePosRelative);
-                    if (block.equals(framePos)) {
-                        return mod.level().getBlockState(framePos).getBlock() == Blocks.OBSIDIAN;
-                    }
-                }
-            }
-            return false;
-        });
-
-        // Protect some used items
-        mod.getBehaviour().addProtectedItems(Items.WATER_BUCKET, Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.FIRE_CHARGE);
-
-        _progressChecker.reset();
+        mod.getBehaviour().addProtectedItems(Items.BUCKET, Items.WATER_BUCKET, Items.LAVA_BUCKET,
+                Items.FLINT_AND_STEEL, Items.FIRE_CHARGE);
+        mod.getBehaviour().avoidBlockBreaking(pos -> plan != null && (
+                (plan.isFrame(pos) && block(mod, pos).is(Blocks.OBSIDIAN))
+                || (phase.ordinal() < Phase.DRAIN.ordinal() && plan.mold().contains(pos))
+                || (phase.ordinal() >= Phase.PRIME.ordinal() && phase.ordinal() <= Phase.RECOVER_WATER.ordinal()
+                    && (pos.equals(plan.at(0, 0, 1)) || pos.equals(plan.at(1, 0, 1))))));
+        mod.getBehaviour().avoidBlockPlacing(pos -> plan != null && plan.isFluidSpace(pos)
+                && !(phase == Phase.STARTER && pos.equals(plan.starter())));
+        // Navigation must not pave over the supply or mine the bank holding the water.
+        mod.getBehaviour().avoidBlockPlacing(pos -> block(mod, pos).is(Blocks.LAVA)
+                && !(plan != null && phase == Phase.STARTER && pos.equals(plan.starter())));
+        mod.getBehaviour().avoidBlockBreaking(pos -> plan != null && plan.isBank(pos));
+        fluidTimer.reset();
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (MarvionBeatMinecraftTask.getConfig().renderDistanceManipulation
-                && !mod.getClientBaritone().getExploreProcess().isActive()) {
-            Minecraft.getInstance().options.renderDistance().set(2);
-            Minecraft.getInstance().options.entityDistanceScaling().set(0.5);
-        }
-        if (_portalOrigin != null) {
-            if (mod.level().getBlockState(_portalOrigin.above()).getBlock() == Blocks.NETHER_PORTAL) {
-                setDebugState("Done constructing nether portal.");
-                mod.getBlockTracker().addBlock(Blocks.NETHER_PORTAL, _portalOrigin.above());
-                return null;
+        if (isFinished(mod)) return null;
+        if (plan == null) return findSite(mod);
+        if (!mod.level().hasChunkAt(plan.origin)) return waiting("Waiting for the portal construction chunk to load");
+        setDebugState("Single-bucket portal: " + phase);
+        switch (phase) {
+            case STARTER -> {
+                if (!PortalCastPlan.fullBlock(block(mod, plan.starter()))) return placeMold(mod, plan.starter());
+                advance(Phase.PRIME);
             }
-        }
-        if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
-            _progressChecker.reset();
-        }
-        if (wanderTask.isActive() && !wanderTask.isFinished(mod)) {
-            setDebugState("Trying again.");
-            _progressChecker.reset();
-            return wanderTask;
-        }
-
-        if (!_progressChecker.check(mod)) {
-            mod.getClientBaritone().getPathingBehavior().forceCancel();
-            if (_portalOrigin != null && _currentDestroyTarget != null) {
-                mod.getBlockTracker().requestBlockUnreachable(_portalOrigin);
-                mod.getBlockTracker().requestBlockUnreachable(_currentDestroyTarget);
-                if (mod.getBlockTracker().unreachable(_portalOrigin) && mod.getBlockTracker().unreachable(_currentDestroyTarget)) {
-                    _portalOrigin = null;
-                    _currentDestroyTarget = null;
+            case PRIME -> {
+                if (!waterSource(mod, plan.primerWater())) {
+                    return pourWater(mod, plan.primerWater(), plan.starter(), plan.right);
                 }
-                return wanderTask;
+                if (!fluidTimer.elapsed() || !block(mod, plan.at(2, 0, 0)).is(Blocks.OBSIDIAN)
+                        || !block(mod, plan.at(1, 0, 1)).is(Blocks.OBSIDIAN)) return null;
+                advance(Phase.OPEN_DRAIN);
             }
-        }
-        if (_refreshTimer.elapsed()) {
-            Debug.logMessage("Duct tape: Refreshing inventory again just in case");
-            _refreshTimer.reset();
-            mod.getSlotHandler().refreshInventory();
-        }
-
-        //If too far, reset.
-        if (_portalOrigin != null && !_portalOrigin.closerThan(BlockPos.containing(mod.getPlayer().position()), 2000)) {
-            _portalOrigin = null;
-            _currentDestroyTarget = null;
-        }
-
-        if (_currentDestroyTarget != null) {
-            if (!WorldHelper.isSolid(mod, _currentDestroyTarget)) {
-                _currentDestroyTarget = null;
-            } else {
-                return new DestroyBlockTask(_currentDestroyTarget);
+            case OPEN_DRAIN -> {
+                if (PortalCastPlan.fullBlock(block(mod, plan.starter()))) return new DestroyBlockTask(plan.starter());
+                if (!fluidTimer.elapsed() || !block(mod, plan.at(-1, 0, 0)).is(Blocks.OBSIDIAN)
+                        || !block(mod, plan.at(0, 0, 1)).is(Blocks.OBSIDIAN)) return null;
+                advance(Phase.RECOVER_PRIMER);
             }
+            case RECOVER_PRIMER -> {
+                if (waterSource(mod, plan.primerWater())) return pickupWater(mod, plan.primerWater());
+                if (!has(mod, Items.WATER_BUCKET) || !fluidTimer.elapsed()) return null;
+                advance(Phase.MOLD);
+            }
+            case MOLD -> {
+                for (BlockPos channel : plan.channels()) {
+                    if (block(mod, channel).is(Blocks.OBSIDIAN)) return waiting("Obsidian obstructs the water channel at " + channel.toShortString());
+                    if (PortalCastPlan.fullBlock(block(mod, channel))) return new DestroyBlockTask(channel);
+                }
+                for (BlockPos pos : plan.mold()) {
+                    if (!PortalCastPlan.fullBlock(block(mod, pos))) return placeMold(mod, pos);
+                }
+                advance(Phase.WATER);
+            }
+            case WATER -> {
+                if (!waterSource(mod, plan.waterSource())) {
+                    return pourWater(mod, plan.waterSource(), plan.at(-1, 3, -1), plan.right);
+                }
+                if (!fluidTimer.elapsed() || !water(mod, plan.at(0, 0, 0)) || !water(mod, plan.at(1, 0, 0))) return null;
+                advance(Phase.CAST);
+            }
+            case CAST -> { return cast(mod); }
+            case RECOVER_WATER -> {
+                if (waterSource(mod, plan.waterSource())) return pickupWater(mod, plan.waterSource());
+                if (!has(mod, Items.WATER_BUCKET)) return waiting("Waiting for recovered water bucket");
+                advance(Phase.DRAIN);
+            }
+            case DRAIN -> {
+                for (BlockPos pos : plan.interior()) {
+                    if (water(mod, pos)) return waiting("Waiting for the portal curtain to drain");
+                    if (!block(mod, pos).isAir()) return new DestroyBlockTask(pos);
+                }
+                for (BlockPos pos : ownedMold.stream().sorted(Comparator.comparingInt((BlockPos p) -> p.getY()).reversed()).toList()) {
+                    if (!block(mod, pos).isAir() && !plan.isFrame(pos)) return new DestroyBlockTask(pos);
+                }
+                advance(Phase.LIGHT);
+            }
+            case LIGHT -> {
+                if (plan.frame().stream().anyMatch(p -> !block(mod, p.target()).is(Blocks.OBSIDIAN))) {
+                    advance(Phase.MOLD);
+                    return null;
+                }
+                return new InteractWithBlockTask(new ItemTarget(new Item[]{Items.FLINT_AND_STEEL, Items.FIRE_CHARGE}, 1),
+                        Direction.UP, plan.at(0, -1, 0), false);
+            }
+            default -> { }
         }
-        // Get flint & steel if we don't have one
-        if (!mod.getItemStorage().hasItem(Items.FLINT_AND_STEEL) && !mod.getItemStorage().hasItem(Items.FIRE_CHARGE)) {
-            setDebugState("Getting flint & steel");
-            _progressChecker.reset();
+        return null;
+    }
+
+    private Task findSite(AltoClef mod) {
+        if (!has(mod, Items.FLINT_AND_STEEL) && !has(mod, Items.FIRE_CHARGE)) {
             return TaskCatalogue.getItemTask(Items.FLINT_AND_STEEL, 1);
         }
-        // Get bucket if we don't have one.
-        int bucketCount = mod.getItemStorage().getItemCount(Items.BUCKET, Items.LAVA_BUCKET, Items.WATER_BUCKET);
-        if (bucketCount < 2) {
-            setDebugState("Getting buckets");
-            _progressChecker.reset();
-            // If we have lava/water, get the inverse. Otherwise we dropped a bucket, just get a bucket.
-            if (mod.getItemStorage().hasItem(Items.LAVA_BUCKET)) {
-                return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
-            } else if (mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
-                return TaskCatalogue.getItemTask(Items.LAVA_BUCKET, 1);
-            }
-            if (mod.getEntityTracker().itemDropped(Items.WATER_BUCKET, Items.LAVA_BUCKET)) {
-                return new PickupDroppedItemTask(new ItemTarget(new Item[]{Items.WATER_BUCKET, Items.LAVA_BUCKET}, 1), true);
-            }
-            return TaskCatalogue.getItemTask(Items.BUCKET, 2);
+        if (!has(mod, Items.BUCKET) && !has(mod, Items.WATER_BUCKET) && !has(mod, Items.LAVA_BUCKET)) {
+            return TaskCatalogue.getItemTask(Items.BUCKET, 1);
         }
-
-        boolean needsToLookForPortal = _portalOrigin == null;
-        if (needsToLookForPortal) {
-            _progressChecker.reset();
-            // Get water before searching, just for convenience.
-            if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
-                setDebugState("Getting water");
-                _progressChecker.reset();
-                return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
-            }
-
-            boolean foundSpot = false;
-
-            if (_firstSearch || _lavaSearchTimer.elapsed()) {
-                _firstSearch = false;
-                _lavaSearchTimer.reset();
-                Debug.logMessage("(Searching for lava lake with portalable spot nearby...)");
-                BlockPos lavaPos = findLavaLake(mod, mod.getPlayer().blockPosition());
-                if (lavaPos != null) {
-                    // We have a lava lake, set our portal origin!
-                    BlockPos foundPortalRegion = getPortalableRegion(mod, lavaPos, mod.getPlayer().blockPosition(), new Vec3i(-1, 0, 0), PORTALABLE_REGION_SIZE, 20);
-                    if (foundPortalRegion == null) {
-                        Debug.logWarning("Failed to find portalable region nearby. Consider increasing the search timeout range");
-                    } else {
-                        _portalOrigin = foundPortalRegion.offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
-                        foundSpot = true;
-                    }
-                } else {
-                    Debug.logMessage("(lava lake not found)");
-                }
-            }
-
-            if (!foundSpot) {
-                setDebugState("(timeout: Looking for lava lake)");
-                return new TimeoutWanderTask();
-            }
+        if (mod.getItemStorage().getItemCount(BUILD_ITEMS) < 15) return PlaceBlockTask.getMaterialTask(15);
+        if (!has(mod, Items.WATER_BUCKET)) {
+            if (!has(mod, Items.BUCKET)) return waiting("Bring water or an empty bucket before starting the cast");
+            return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
         }
-
-        // We have a portal, now build it.
-        for (Vec3i framePosRelative : PORTAL_FRAME) {
-            BlockPos framePos = _portalOrigin.offset(framePosRelative);
-            Block frameBlock = mod.level().getBlockState(framePos).getBlock();
-            if (frameBlock == Blocks.OBSIDIAN) {
-                // Already satisfied, clear water above if need be.
-                BlockPos waterCheck = framePos.above();
-                if (mod.level().getBlockState(waterCheck).getBlock() == Blocks.WATER && WorldHelper.isSourceBlock(mod, waterCheck, true)) {
-                    setDebugState("Clearing water from cast");
-                    return new ClearLiquidTask(waterCheck);
-                }
-                continue;
-            }
-
-            // Get lava early so placing it is faster
-            if (!mod.getItemStorage().hasItem(Items.LAVA_BUCKET) && frameBlock != Blocks.LAVA) {
-                setDebugState("Collecting lava");
-                _progressChecker.reset();
-                return _collectLavaTask;
-            }
-
-            // We need to place obsidian here.
-            if (mod.getBlockTracker().unreachable(framePos)) {
-                _portalOrigin = null;
-            }
-            return new PlaceObsidianBucketTask(framePos);
-        }
-
-        // Now, clear the inside.
-        for (Vec3i offs : PORTAL_INTERIOR) {
-            BlockPos p = _portalOrigin.offset(offs);
-            assert Minecraft.getInstance().level != null;
-            if (!Minecraft.getInstance().level.getBlockState(p).isAir()) {
-                setDebugState("Clearing inside of portal");
-                _currentDestroyTarget = p;
+        if (firstSearch || searchTimer.elapsed()) {
+            firstSearch = false;
+            searchTimer.reset();
+            List<BlockPos> sources = exposedSources(mod, mod.getPlayer().blockPosition(), SEARCH_RADIUS);
+            plan = selectPlan(mod, sources, true);
+            if (plan == null) plan = selectPlan(mod, sources, false);
+            if (plan != null) {
+                Debug.logMessage("[DeepClef portal] single bucket " + (plan.poolEdge ? "shore" : "flat-ground")
+                        + " cast at " + plan.origin.toShortString() + " facing " + plan.forward
+                        + ", remaining pours=" + plan.poursNeededAfterPriming(p -> block(mod, p)));
+                advance(plan.poolEdge ? Phase.STARTER : Phase.MOLD);
                 return null;
-                //return new DestroyBlockTask(p);
+            }
+            Debug.logMessage("[DeepClef portal] no suitable shore/flat cast with enough exposed lava within " + SEARCH_RADIUS);
+        }
+        setDebugState("Searching for lava and a supported, clear casting site");
+        return searchWander;
+    }
+
+    private PortalCastPlan selectPlan(AltoClef mod, List<BlockPos> sources, boolean shore) {
+        Set<BlockPos> tried = new HashSet<>();
+        for (BlockPos lava : sources) {
+            if (shore) {
+                for (Direction direction : HORIZONTAL) {
+                    PortalCastPlan candidate = new PortalCastPlan(lava, direction, true);
+                    if (validPlan(mod, candidate, sources)) return candidate;
+                }
+            } else {
+                for (Direction direction : HORIZONTAL) for (int distance = 2; distance <= 6; distance++) {
+                    BlockPos origin = lava.relative(direction, distance);
+                    if (!tried.add(origin)) continue;
+                    for (Direction face : HORIZONTAL) {
+                        PortalCastPlan candidate = new PortalCastPlan(origin, face, false);
+                        if (validPlan(mod, candidate, sources)) return candidate;
+                    }
+                }
             }
         }
+        return null;
+    }
 
-        setDebugState("Flinting and Steeling");
-        // Flint and steel it baby
-        return new InteractWithBlockTask(new ItemTarget(new Item[]{Items.FLINT_AND_STEEL, Items.FIRE_CHARGE}, 1), Direction.UP, _portalOrigin.below(), true);
+    private boolean validPlan(AltoClef mod, PortalCastPlan candidate, List<BlockPos> sources) {
+        if (!candidate.fits(p -> mod.level().hasChunkAt(p) ? block(mod, p) : Blocks.BEDROCK.defaultBlockState())) return false;
+        return candidate.hasEnoughLava(sources, p -> block(mod, p));
+    }
+
+    private Task cast(AltoClef mod) {
+        if (!waterSource(mod, plan.waterSource())) {
+            if (has(mod, Items.WATER_BUCKET)) { advance(Phase.MOLD); return null; }
+            if (has(mod, Items.BUCKET)) return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
+            // Store the carried lava back in its original pool cell before reusing the bucket for water.
+            if (has(mod, Items.LAVA_BUCKET) && lavaTarget != null
+                    && (block(mod, lavaTarget).isAir() || block(mod, lavaTarget).is(Blocks.LAVA))) {
+                for (Direction face : Direction.values()) {
+                    BlockPos support = lavaTarget.relative(face.getOpposite());
+                    if (PortalCastPlan.fullBlock(block(mod, support))) return new PortalBucketTask(Items.LAVA_BUCKET, support, face);
+                }
+            }
+            return waiting("Casting water source missing; restore water at " + plan.waterSource().toShortString());
+        }
+        for (PortalCastPlan.Placement placement : plan.frame()) {
+            BlockPos pos = placement.target();
+            if (block(mod, pos).is(Blocks.OBSIDIAN)) continue;
+            if (!pos.equals(lastFrame)) {
+                lastFrame = pos;
+                fluidTimer.reset();
+                Debug.logMessage("[DeepClef portal] casting frame " + pos.toShortString());
+            }
+            BlockState state = block(mod, pos);
+            if (state.is(Blocks.LAVA)) {
+                if (fluidTimer.elapsed() && !touchesWater(mod, pos) && has(mod, Items.BUCKET)) {
+                    return new PortalBucketTask(Items.BUCKET, pos, null);
+                }
+                return waiting("Waiting for lava to cool at " + pos.toShortString());
+            }
+            if (!state.isAir() && !state.is(Blocks.WATER)) return new DestroyBlockTask(pos);
+            if (!touchesWater(mod, pos)) {
+                if (fluidTimer.elapsed()) advance(Phase.MOLD);
+                return waiting("Restoring casting water at " + pos.toShortString());
+            }
+            if (!has(mod, Items.LAVA_BUCKET)) {
+                if (!has(mod, Items.BUCKET)) return waiting("Waiting for the empty casting bucket");
+                if (lavaTarget == null || !PortalCastPlan.lavaSource(block(mod, lavaTarget))) {
+                    lavaTarget = exposedSources(mod, plan.origin, 16).stream()
+                            .filter(p -> !plan.isFrame(p) && !plan.isFluidSpace(p))
+                            .min(Comparator.comparingDouble(p -> p.distSqr(mod.getPlayer().blockPosition()))).orElse(null);
+                }
+                if (lavaTarget == null) return waiting("No exposed lava sources remain near this portal");
+                return new PortalBucketTask(Items.BUCKET, lavaTarget, null);
+            }
+            if (!PortalCastPlan.fullBlock(block(mod, placement.support()))) {
+                return waiting("Casting support missing at " + placement.support().toShortString());
+            }
+            return new PortalBucketTask(Items.LAVA_BUCKET, placement.support(), placement.face());
+        }
+        advance(Phase.RECOVER_WATER);
+        return null;
+    }
+
+    private Task placeMold(AltoClef mod, BlockPos pos) {
+        for (Item item : BUILD_ITEMS) if (has(mod, item)) {
+            ownedMold.add(pos);
+            return new PlaceBlockTask(pos, net.minecraft.world.level.block.Block.byItem(item));
+        }
+        return PlaceBlockTask.getMaterialTask(15);
+    }
+
+    private Task pourWater(AltoClef mod, BlockPos target, BlockPos support, Direction face) {
+        fluidTimer.reset();
+        if (!has(mod, Items.WATER_BUCKET)) return waiting("Waiting for water bucket to place at " + target.toShortString());
+        return new PortalBucketTask(Items.WATER_BUCKET, support, face);
+    }
+
+    private Task pickupWater(AltoClef mod, BlockPos source) {
+        fluidTimer.reset();
+        if (!has(mod, Items.BUCKET)) return waiting("Waiting for empty bucket to recover the water source");
+        return new PortalBucketTask(Items.BUCKET, source, null);
+    }
+
+    private static List<BlockPos> exposedSources(AltoClef mod, BlockPos center, int radius) {
+        List<BlockPos> result = new ArrayList<>();
+        for (BlockPos cursor : BlockPos.betweenClosed(center.offset(-radius, -radius, -radius), center.offset(radius, radius, radius))) {
+            if (!mod.level().hasChunkAt(cursor)) continue;
+            if (PortalCastPlan.lavaSource(block(mod, cursor)) && block(mod, cursor.above()).isAir()) result.add(cursor.immutable());
+        }
+        result.sort(Comparator.comparingDouble(p -> p.distSqr(center)));
+        return result;
+    }
+
+    private static boolean touchesWater(AltoClef mod, BlockPos pos) {
+        if (water(mod, pos.above())) return true;
+        for (Direction side : HORIZONTAL) if (water(mod, pos.relative(side))) return true;
+        return false;
+    }
+
+    private static BlockState block(AltoClef mod, BlockPos pos) { return mod.level().getBlockState(pos); }
+    private static boolean water(AltoClef mod, BlockPos pos) { return block(mod, pos).is(Blocks.WATER); }
+    private static boolean waterSource(AltoClef mod, BlockPos pos) { return water(mod, pos) && block(mod, pos).getFluidState().isSource(); }
+    private static boolean has(AltoClef mod, Item item) { return PortalBucketTask.hasItem(mod, item); }
+
+    private Task waiting(String message) {
+        setDebugState(message);
+        if (warningTimer.elapsed()) {
+            warningTimer.reset();
+            Debug.logWarning("[DeepClef portal] " + message);
+        }
+        return null;
+    }
+
+    private void advance(Phase next) {
+        phase = next;
+        fluidTimer.reset();
+        Debug.logMessage("[DeepClef portal] phase=" + next);
+    }
+
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        if (plan == null || mod.level() == null) return false;
+        boolean done = block(mod, plan.origin.above()).is(Blocks.NETHER_PORTAL);
+        if (done) mod.getBlockTracker().addBlock(Blocks.NETHER_PORTAL, plan.origin.above());
+        return done;
     }
 
     @Override
@@ -290,124 +319,8 @@ public class ConstructNetherPortalBucketTask extends Task {
     }
 
     @Override
-    protected boolean isEqual(Task other) {
-        return other instanceof ConstructNetherPortalBucketTask;
-    }
+    protected boolean isEqual(Task other) { return other instanceof ConstructNetherPortalBucketTask; }
 
     @Override
-    protected String toDebugString() {
-        return "Construct Nether Portal";
-    }
-
-    private BlockPos findLavaLake(AltoClef mod, BlockPos playerPos) {
-        HashSet<BlockPos> alreadyExplored = new HashSet<>();
-        double nearestSqDistance = Double.POSITIVE_INFINITY;
-        BlockPos nearestLake = null;
-        List<BlockPos> lavas = mod.getBlockTracker().getKnownLocations(Blocks.LAVA);
-        if (!lavas.isEmpty()) {
-            for (BlockPos pos : lavas) {
-                if (alreadyExplored.contains(pos)) continue;
-                double sqDist = playerPos.distSqr(pos);
-                if (sqDist < nearestSqDistance) {
-                    int depth = getNumberOfBlocksAdjacent(alreadyExplored, pos);
-                    if (depth != 0) {
-                        Debug.logMessage("Found with depth " + depth);
-                        if (depth >= 12) {
-                            nearestSqDistance = sqDist;
-                            nearestLake = pos;
-                        }
-                    }
-                }
-            }
-        }
-        return nearestLake;
-    }
-
-    // Used to flood-scan for blocks of lava.
-    private int getNumberOfBlocksAdjacent(HashSet<BlockPos> alreadyExplored, BlockPos origin) {
-        // Base case: We already explored this one
-        if (alreadyExplored.contains(origin)) return 0;
-        alreadyExplored.add(origin);
-
-        // Base case: We hit a non-full lava block.
-        assert Minecraft.getInstance().level != null;
-        BlockState s = Minecraft.getInstance().level.getBlockState(origin);
-        if (s.getBlock() != Blocks.LAVA) {
-            return 0;
-        } else {
-            // We may not be a full lava block
-            if (!s.getFluidState().isSource()) return 0;
-            int level = s.getFluidState().getAmount();
-            //Debug.logMessage("TEST LEVEL: " + level + ", " + height);
-            // Only accept FULL SOURCE BLOCKS
-            if (level != 8) return 0;
-        }
-
-        BlockPos[] toCheck = new BlockPos[]{origin.north(), origin.south(), origin.east(), origin.west(), origin.above(), origin.below()};
-
-        int bonus = 0;
-        for (BlockPos check : toCheck) {
-            // This block is new! Explore out from it.
-            bonus += getNumberOfBlocksAdjacent(alreadyExplored, check);
-        }
-
-        return bonus + 1;
-    }
-
-    // Get a region that a portal can fit into
-    private BlockPos getPortalableRegion(AltoClef mod, BlockPos lava, BlockPos playerPos, Vec3i sizeOffset, Vec3i sizeAllocation, int timeoutRange) {
-        Vec3i[] directions = new Vec3i[]{new Vec3i(1, 0, 0), new Vec3i(-1, 0, 0), new Vec3i(0, 0, 1), new Vec3i(0, 0, -1)};
-
-        double minDistanceToPlayer = Double.POSITIVE_INFINITY;
-        BlockPos bestPos = null;
-
-        for (Vec3i direction : directions) {
-
-            // Inch along
-            for (int offs = 1; offs < timeoutRange; ++offs) {
-
-                Vec3i offset = new Vec3i(direction.getX() * offs, direction.getY() * offs, direction.getZ() * offs);
-
-                boolean found = true;
-                boolean solidFound = false;
-                // check for collision with lava in box
-                // We have an extra buffer to make sure we never break a block NEXT to lava.
-                moveAlongLine:
-                for (int dx = -1; dx < sizeAllocation.getX() + 1; ++dx) {
-                    for (int dz = -1; dz < sizeAllocation.getZ() + 1; ++dz) {
-                        for (int dy = -1; dy < sizeAllocation.getY(); ++dy) {
-                            BlockPos toCheck = lava.offset(offset).offset(sizeOffset).offset(dx, dy, dz);
-                            assert Minecraft.getInstance().level != null;
-                            BlockState state = Minecraft.getInstance().level.getBlockState(toCheck);
-                            if (state.getBlock() == Blocks.LAVA || state.getBlock() == Blocks.WATER || state.getBlock() == Blocks.BEDROCK) {
-                                found = false;
-                                break moveAlongLine;
-                            }
-                            // Also check for at least 1 solid block for us to place on...
-                            if (dy <= 1 && !solidFound && WorldHelper.isSolid(mod, toCheck)) {
-                                solidFound = true;
-                            }
-                        }
-                    }
-                }
-                // Check for solid ground at least somewhere
-                if (!solidFound) {
-                    break;
-                }
-
-                if (found) {
-                    BlockPos foundBoxCorner = lava.offset(offset).offset(sizeOffset);
-                    double sqDistance = foundBoxCorner.distSqr(playerPos);
-                    if (sqDistance < minDistanceToPlayer) {
-                        minDistanceToPlayer = sqDistance;
-                        bestPos = foundBoxCorner;
-                    }
-                    break;
-                }
-            }
-
-        }
-
-        return bestPos;
-    }
+    protected String toDebugString() { return "Construct Nether Portal (single bucket)"; }
 }

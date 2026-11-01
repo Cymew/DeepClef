@@ -105,7 +105,13 @@ public class DeepSeekKeyScreen extends Screen {
                 if (result.isEmpty()) {
                     this.status = Component.literal("✔ 校验通过！Key 已保存到 altoclef/altoclef_settings.json");
                     this.statusColor = 0x55FF55;
-                    Debug.logMessage("[DeepClef @ds] validation SUCCESS");
+                    Debug.logInternal("[DeepClef @ds] validation SUCCESS");
+                    Debug.logMessage("✔ DeepSeek API Key 校验通过，已保存到 altoclef/altoclef_settings.json");
+                    // 校验通过后自动关闭窗口（之前窗口不消失，必须手动 Esc）。
+                    // 只在当前仍是本界面时关闭，避免误关用户在这期间打开的其他界面。
+                    if (Minecraft.getInstance().gui.screen() == this) {
+                        this.onClose();
+                    }
                 } else {
                     this.status = Component.literal("✘ " + result);
                     this.statusColor = 0xFF5555;

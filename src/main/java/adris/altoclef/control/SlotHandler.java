@@ -241,12 +241,9 @@ public class SlotHandler {
     }
 
     public void refreshInventory() {
-        if (Minecraft.getInstance().player == null)
-            return;
-        for (int i = 0; i < Minecraft.getInstance().player.getInventory().getContainerSize(); ++i) {
-            Slot slot = Slot.getFromCurrentScreenInventory(i);
-            clickSlotForce(slot, 0, ContainerInput.PICKUP);
-            clickSlotForce(slot, 0, ContainerInput.PICKUP);
-        }
+        // Refresh our view, never mutate the inventory to solicit synchronization.
+        // Paired PICKUP clicks are not a no-op with a carried stack, stack merging,
+        // restricted equipment slots or a creative/survival transition.
+        _mod.getItemStorage().registerSlotAction();
     }
 }

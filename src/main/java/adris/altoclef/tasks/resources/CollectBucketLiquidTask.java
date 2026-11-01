@@ -91,8 +91,33 @@ public class CollectBucketLiquidTask extends ResourceTask {
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progressChecker.reset();
         }
-        // If we're standing inside a liquid, go pick it up.
-        if (_tryImmediatePickupTimer.elapsed() && !mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
+        // If we're standing in/next to the liquid, scoop it right away instead of
+        // walking to a "tracked" source further away (which used to make the bot
+        // wander off from a lava pool it was already touching).
+        if (_tryImmediatePickupTimer.elapsed() && !mod.getItemStorage().hasItem(_target)
+                && mod.getItemStorage().hasItem(Items.BUCKET)) {
+            BlockPos feet = mod.getPlayer().blockPosition();
+            BlockPos[] around = new BlockPos[]{
+                    feet, feet.below(), feet.north(), feet.south(), feet.east(), feet.west(),
+                    feet.below().north(), feet.below().south(), feet.below().east(), feet.below().west()
+            };
+            for (BlockPos candidate : around) {
+                if (mod.level().getBlockState(candidate).getBlock() != _toCollect) continue;
+                if (!WorldHelper.isSourceBlock(mod, candidate, false)) continue;
+                setDebugState("Trying to collect (liquid is right next to us)");
+                LookHelper.lookAt(mod, WorldHelper.toVec3d(candidate));
+                _tryImmediatePickupTimer.reset();
+                if (mod.getSlotHandler().forceEquipItem(Items.BUCKET)) {
+                    mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+                    mod.getExtraBaritoneSettings().setInteractionPaused(true);
+                    _pickedUpTimer.reset();
+                    _progressChecker.reset();
+                }
+                return null;
+            }
+        }
+        // Standing inside the target liquid (mostly water).
+        if (_tryImmediatePickupTimer.elapsed() && !mod.getItemStorage().hasItem(_target)) {
             Block standingInside = mod.level().getBlockState(mod.getPlayer().blockPosition()).getBlock();
             if (standingInside == _toCollect) {
                 setDebugState("Trying to collect (we are in it)");

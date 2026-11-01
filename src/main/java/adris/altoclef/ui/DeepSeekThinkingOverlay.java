@@ -75,6 +75,11 @@ public class DeepSeekThinkingOverlay {
     }
 
     public void render(GuiGraphicsExtractor graphics) {
+        // 与原版 HUD 一致：F1（keyToggleGui → Hud.toggle()）隐藏 HUD 时，思考叠加层也一起隐藏。
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.gui != null && minecraft.gui.hud != null && minecraft.gui.hud.isHidden()) {
+            return;
+        }
         float scale;
         List<String> lines;
         String statusLine;

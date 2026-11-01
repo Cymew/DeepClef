@@ -3,9 +3,10 @@ package adris.altoclef.tasks.movement;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.SwimNavigation;
+import adris.altoclef.util.helpers.SwimTerrain;
 import net.minecraft.core.BlockPos;
 
-/** Explicit swimming starts in water; normal goto handles walking to/from the water. */
+/** Explicit swimming retains its goal across nearby banks and breathing pockets. */
 public final class SwimTask extends Task {
     private final BlockPos goal;
     private final boolean surface, ascend;
@@ -26,7 +27,9 @@ public final class SwimTask extends Task {
         if(done)return null;
         if(mod.getPlayer()==null || mod.level()==null) {done=true;result="未进入世界。";return null;}
         if(navigation==null) {
-            if(!mod.getPlayer().isInWater() && !ascend) {done=true;result="请先进入水体，再使用 swim；陆水混合行程请用 goto。";return null;}
+            if(!mod.getPlayer().isInWater() && !ascend && !new SwimTerrain(mod).hasNearbyWater(mod.getPlayer().blockPosition())) {
+                done=true;result="附近 8 格内未发现可接入水体；长距离陆水混合行程请用 goto。";return null;
+            }
             navigation=new SwimNavigation(mod,ascend?mod.getPlayer().blockPosition():goal,surface,ascend);
         }
         var outcome=navigation.tick(mod);setDebugState(navigation.result());

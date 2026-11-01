@@ -35,7 +35,7 @@ public class PortalCommand extends Command {
             return;
         }
         if (mode.contains("cast") || mode.contains("浇筑") || mode.contains("build")) {
-            mod.log("开始浇筑下界传送门：需要水桶 + 附近岩浆，会自动搭浇筑框、舀岩浆和水、点火。");
+            mod.log("开始单桶浇筑下界传送门：一个水桶 + 附近岩浆即可；自动开槽引水、用同一个桶运岩浆、补齐门框后收水点火。");
             mod.runUserTask(new ConstructNetherPortalBucketTask(), this::finish);
             return;
         }

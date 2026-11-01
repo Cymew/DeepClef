@@ -265,8 +265,9 @@ public class AltoClef implements ModInitializer {
     /**
      * Detects a save/server switch and drops every piece of bot state that
      * belonged to the previous world: the running {@code @ds} agent (its
-     * conversation and background task), the user task chain, combat intent and
-     * input holds. Chat history itself is per-save and lives in the save folder.
+     * conversation and background task), the user task chain, combat intent,
+     * input holds and the thinking overlay. Chat history itself is per-save and
+     * lives in the save folder.
      */
     private void checkWorldSwitch() {
         net.minecraft.client.multiplayer.ClientLevel world = level();
@@ -287,6 +288,8 @@ public class AltoClef implements ModInitializer {
         adris.altoclef.util.helpers.PvpCombat.reset(this);
         adris.altoclef.util.helpers.BowCombat.reset(this);
         adris.altoclef.util.helpers.SpearHelper.stopCharging(this);
+        // 叠加层是进程内单例，存档切换时必须清空，否则上一个存档的思考内容会带进新存档。
+        DeepSeekThinkingOverlay.getInstance().clear();
         Debug.logInternal("[DeepClef] world changed: bot state and @ds session reset");
     }
 
