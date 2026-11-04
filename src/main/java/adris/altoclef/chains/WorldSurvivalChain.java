@@ -1,6 +1,8 @@
 package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.control.MiningWaterControl;
+import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.PutOutFireTask;
@@ -71,7 +73,8 @@ public class WorldSurvivalChain extends SingleTaskChain {
                 && !adris.altoclef.util.helpers.SwimNavigation.handlesOxygen(mod)
                 && !mod.getClientBaritone().getPathingBehavior().isPathing()
                 && mod.getPlayer().isInWater()
-                && mod.getPlayer().getAirSupply() < mod.getPlayer().getMaxAirSupply()) {
+                && MiningWaterControl.needsAir(hasMiningTask(mod), _ownsJump,
+                        mod.getPlayer().getAirSupply(), mod.getPlayer().getMaxAirSupply())) {
             _plan = Plan.DROWNING;
             return 100;
         }
@@ -182,6 +185,12 @@ public class WorldSurvivalChain extends SingleTaskChain {
         Task userTask = mod.getUserTaskChain().getCurrentTask();
         return WorldHelper.isInNetherPortal(mod)
                 && (userTask == null || !userTask.thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask));
+    }
+
+    private boolean hasMiningTask(AltoClef mod) {
+        Task root = mod.getUserTaskChain().getCurrentTask();
+        return root != null && root.thisOrChildSatisfies(task -> task instanceof DestroyBlockTask
+                && task.isActive() && !task.stopped() && !task.isFinished(mod));
     }
 
     private void releaseInteractionPause(AltoClef mod) {

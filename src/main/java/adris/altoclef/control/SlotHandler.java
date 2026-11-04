@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.function.IntConsumer;
+import net.minecraft.world.entity.player.Inventory;
 
 
 public class SlotHandler {
@@ -209,6 +211,28 @@ public class SlotHandler {
     public void forceEquipSlot(Slot slot) {
         Slot target = PlayerSlot.getEquipSlot();
         clickSlotForce(slot, target.getInventorySlot(), ContainerInput.SWAP);
+    }
+
+    /** Equip one exact mining stack, never swap every occurrence of its item type. */
+    public boolean equipMiningTool(Slot slot) {
+        if (_mod.getFoodChain().isTryingToEat()) return false;
+        int index = slot.getInventorySlot();
+        if (index < 0 || index >= 36 || !slot.isSlotInPlayerInventory()) return false;
+        var inventory = _mod.getPlayer().getInventory();
+        return equipMiningTool(inventory, index, hotbar -> clickSlotForce(slot, hotbar, ContainerInput.SWAP));
+    }
+
+    public static boolean equipMiningTool(Inventory inventory, int index, IntConsumer swapIntoHotbar) {
+        if (index < 0 || index >= 36) return false;
+        if (index < 9) {
+            // Selecting an existing hotbar stack needs no inventory transaction.
+            inventory.setSelectedSlot(index);
+            return true;
+        }
+        ItemStack expected = inventory.getItem(index).copy();
+        if (expected.isEmpty()) return false;
+        swapIntoHotbar.accept(inventory.getSelectedSlot());
+        return ItemStack.isSameItemSameComponents(expected, inventory.getSelectedItem());
     }
 
     public boolean forceEquipItem(Item[] matches, boolean unInterruptable) {

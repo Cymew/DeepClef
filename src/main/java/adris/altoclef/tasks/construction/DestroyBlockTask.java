@@ -2,6 +2,7 @@ package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.control.MiningWaterControl;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
@@ -21,7 +22,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.illager.Pillager;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.core.BlockPos;
@@ -53,7 +53,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             Blocks.SWEET_BERRY_BUSH
     };
     private Task _unstuckTask = null;
-    private boolean isMining;
+    private final MiningWaterControl _waterControl = new MiningWaterControl();
+    private boolean _ownsMiningJump;
 
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
@@ -174,6 +175,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
      */
     @Override
     protected void onStart(AltoClef mod) {
+        _waterControl.reset();
         mod.getBehaviour().push();
         // Mining rays pass through liquids, even when a parent was collecting a source.
         mod.getBehaviour().setRayTracingFluidHandling(net.minecraft.world.level.ClipContext.Fluid.NONE);
@@ -222,6 +224,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     @Override
     protected Task onTick(AltoClef mod) {
         if (isFinished(mod)) {
+            releaseMiningFloat(mod);
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
             return null;
         }
@@ -248,6 +251,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
         // Check if the player is in a Nether portal
         if (WorldHelper.isInNetherPortal(mod)) {
+            releaseMiningFloat(mod);
             if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 setDebugState("Getting out from nether portal");
                 // Hold the sneak and move forward inputs to exit the Nether portal
@@ -267,6 +271,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
         // Check if there is an active unstuck task and the player is stuck in a block
         if (_unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
+            releaseMiningFloat(mod);
             setDebugState("Getting unstuck from block.");
             stuckCheck.reset();
             // Release control of Baritone's custom goal process and explore process
@@ -279,6 +284,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         if (!_moveChecker.check(mod) || !stuckCheck.check(mod)) {
             BlockPos blockStuck = stuckInBlock(mod);
             if (blockStuck != null) {
+                releaseMiningFloat(mod);
                 _unstuckTask = getFenceUnstuckTask();
                 return _unstuckTask;
             }
@@ -296,17 +302,32 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // and the player is within a distance of 0.89 blocks from the position
         if (!WorldHelper.isSolid(mod, _pos.above()) && mod.getPlayer().position().y > _pos.getY() && _pos.closerThan(BlockPos.containing(mod.getPlayer().onGround() ? mod.getPlayer().position() : mod.getPlayer().position().add(0, -1, 0)), 0.89)) {
             if (WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
+                releaseMiningFloat(mod);
                 setDebugState("It's dangerous to break as we're right above it, moving away and trying again.");
                 return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
             }
         }
 
-        if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
+        boolean canMine = (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
                 && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
-                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel();
+        _waterControl.update(canMine && mod.getPlayer().isInWater(), reach.isPresent(), mod.getPlayer().getY());
+        if (_waterControl.isActive()) {
+            if (!mod.getPlayer().onGround()
+                    && _waterControl.shouldJump(mod.getPlayer().getY(), mod.getPlayer().getDeltaMovement().y)) {
+                mod.getInputControls().hold(Input.JUMP);
+                _ownsMiningJump = true;
+            } else if (_ownsMiningJump) {
+                mod.getInputControls().release(Input.JUMP);
+                _ownsMiningJump = false;
+            }
+        } else {
+            releaseMiningFloat(mod);
+        }
+
+        if (reach.isPresent() && canMine) {
             setDebugState("Block in range, mining...");
             stuckCheck.reset();
-            isMining = true;
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
             mod.getInputControls().release(Input.MOVE_FORWARD);
@@ -318,27 +339,22 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             BlockState state = mod.level().getBlockState(_pos);
             Optional<Slot> bestToolSlot = StorageHelper.getBestToolSlot(mod, state);
             Slot currentEquipped = PlayerSlot.getEquipSlot();
-            // if baritone is running, only accept tools OUTSIDE OF HOTBAR!
-            // Baritone will take care of tools inside the hotbar.
-            if (bestToolSlot.isPresent() && bestToolSlot.get() != currentEquipped) {
-                // ONLY equip if the item class is STRICTLY different (otherwise we swap around a lot)
-                if (StorageHelper.getItemStackInSlot(currentEquipped).getItem() != StorageHelper.getItemStackInSlot(bestToolSlot.get()).getItem()) {
-                    boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
-                            && !mod.getFoodChain().isTryingToEat();
-                    if (isAllowedToManage) {
-                        Debug.logMessage("Found better tool in inventory, equipping.");
-                        ItemStack bestToolItemStack = StorageHelper.getItemStackInSlot(bestToolSlot.get());
-                        Item bestToolItem = bestToolItemStack.getItem();
-                        mod.getSlotHandler().forceEquipItem(bestToolItem);
-                    }
-                    return null;
-                }
+            if (bestToolSlot.isPresent() && !bestToolSlot.get().equals(currentEquipped)) {
+                // Stop the old swing before changing its stack. The next tick starts with
+                // the exact selected tool; never re-equip by item type or swap all copies.
+                mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+                mod.getSlotHandler().equipMiningTool(bestToolSlot.get());
+                return null;
             }
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
         } else {
             setDebugState("Getting to block...");
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
-            isMining = false;
+            if (_waterControl.isActive()) {
+                // A brief wave/pose change must not start a new path and discard our stance.
+                setDebugState("Stabilizing water mining stance...");
+                return null;
+            }
             boolean isCloseToMoveBack = _pos.closerThan(BlockPos.containing(mod.getPlayer().position()), 2);
             if (isCloseToMoveBack) {
                 if (!mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
@@ -370,6 +386,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
      */
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        releaseMiningFloat(mod);
         mod.getBehaviour().pop();
         // Cancel Baritone pathing
         mod.getClientBaritone().getPathingBehavior().forceCancel();
@@ -384,6 +401,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         mod.getInputControls().release(Input.SNEAK);
         mod.getInputControls().release(Input.MOVE_BACK);
         mod.getInputControls().release(Input.MOVE_FORWARD);
+    }
+
+    private void releaseMiningFloat(AltoClef mod) {
+        _waterControl.reset();
+        if (_ownsMiningJump) {
+            mod.getInputControls().release(Input.JUMP);
+            _ownsMiningJump = false;
+        }
     }
 
     /**

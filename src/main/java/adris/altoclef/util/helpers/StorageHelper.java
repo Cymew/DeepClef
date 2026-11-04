@@ -152,37 +152,32 @@ public class StorageHelper {
     }
 
     public static Optional<Slot> getBestToolSlot(AltoClef mod, BlockState state) {
-        // TODO: mod.configState.silkTouchOverrideMode {
-        //      DONT_CARE (Default)
-        //      PREFER (Always use silk touch if we have)
-        //      AVOID  (Don't use silk touch if we can)
-        //  }
-        Slot bestToolSlot = null;
-        double highestSpeed = Double.NEGATIVE_INFINITY;
-        if (Slot.getCurrentScreenSlots() != null) {
-            for (Slot slot : Slot.getCurrentScreenSlots()) {
-                if (!slot.isSlotInPlayerInventory())
-                    continue;
-                ItemStack stack = getItemStackInSlot(slot);
-                if (stack.getItem().components().has(DataComponents.TOOL)) {
-                    if (stack.isCorrectToolForDrops(state)) {
-                        double speed = ToolSet.calculateSpeedVsBlock(stack, state);
-                        if (speed > highestSpeed) {
-                            highestSpeed = speed;
-                            bestToolSlot = slot;
-                        }
-                    }
-                }
-                if (stack.getItem() == Items.SHEARS) {
-                    // Shears take priority over leaf blocks.
-                    if (ItemHelper.areShearsEffective(state.getBlock())) {
-                        bestToolSlot = slot;
-                        break;
-                    }
-                }
+        Inventory inventory = mod.getPlayer().getInventory();
+        int best = getBestMiningSlot(inventory.getNonEquipmentItems(), inventory.getSelectedSlot(), state);
+        return Optional.ofNullable(Slot.getFromCurrentScreenInventory(best));
+    }
+
+    /** Score the actual stacks, including enchantments; equal speed keeps the held stack. */
+    public static int getBestMiningSlot(List<ItemStack> inventory, int selected, BlockState state) {
+        int best = selected;
+        double speed = miningSpeed(inventory.get(selected), state);
+        // Only the 36 main inventory slots. Crafting, cursor and offhand slots are not hotbar slots.
+        for (int i = 0; i < Math.min(36, inventory.size()); i++) {
+            double candidate = miningSpeed(inventory.get(i), state);
+            if (candidate > speed) {
+                best = i;
+                speed = candidate;
             }
         }
-        return Optional.ofNullable(bestToolSlot);
+        return best;
+    }
+
+    private static double miningSpeed(ItemStack stack, BlockState state) {
+        // A fast tool that destroys the required drop is not an upgrade for collection.
+        if (state.requiresCorrectToolForDrops() && !stack.isCorrectToolForDrops(state)) {
+            return Double.NEGATIVE_INFINITY;
+        }
+        return ToolSet.calculateSpeedVsBlock(stack, state);
     }
 
     // Gets a slot with an item we can throw away

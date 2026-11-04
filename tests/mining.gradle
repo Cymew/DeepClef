@@ -1,0 +1,21 @@
+allprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin('java')) {
+            def output = layout.buildDirectory.dir('mining-regression')
+            def compile = tasks.register('compileMiningRegression', JavaCompile) {
+                dependsOn tasks.named('classes')
+                source = fileTree(new File(rootProject.projectDir, 'tests/mining')) { include '*.java' }
+                classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+                destinationDirectory = output
+                options.encoding = 'UTF-8'
+                javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+            tasks.register('miningRegression', JavaExec) {
+                dependsOn compile
+                classpath = sourceSets.main.runtimeClasspath + files(output)
+                mainClass = 'adris.altoclef.mining.MiningRegression'
+                javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+        }
+    }
+}
