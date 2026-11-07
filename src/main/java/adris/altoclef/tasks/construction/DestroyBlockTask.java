@@ -49,7 +49,6 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             Blocks.BIG_DRIPLEAF_STEM,
             Blocks.SMALL_DRIPLEAF,
             Blocks.TALL_GRASS,
-            Blocks.GRASS_BLOCK,
             Blocks.SWEET_BERRY_BUSH
     };
     private Task _unstuckTask = null;
@@ -346,7 +345,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 mod.getSlotHandler().equipMiningTool(bestToolSlot.get());
                 return null;
             }
-            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, LookHelper.isLookingAt(mod, _pos));
         } else {
             setDebugState("Getting to block...");
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
@@ -355,17 +354,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 setDebugState("Stabilizing water mining stance...");
                 return null;
             }
-            boolean isCloseToMoveBack = _pos.closerThan(BlockPos.containing(mod.getPlayer().position()), 2);
-            if (isCloseToMoveBack) {
-                if (!mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
-                        !mod.getFoodChain().needsToEat()) {
-                    mod.getInputControls().hold(Input.MOVE_BACK);
-                    mod.getInputControls().hold(Input.SNEAK);
-                } else {
-                    mod.getInputControls().release(Input.MOVE_BACK);
-                    mod.getInputControls().release(Input.SNEAK);
-                }
-            }
+            // The approach goal owns movement, including the first tick of a new path.
+            mod.getInputControls().release(Input.MOVE_BACK);
+            mod.getInputControls().release(Input.SNEAK);
             if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 mod.getClientBaritone().getBuilderProcess().onLostControl();
                 BlockPos miningStand = findMiningStand(mod.level(), _pos, mod.getPlayer().blockPosition(),

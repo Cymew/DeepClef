@@ -65,6 +65,7 @@ public final class MiningRegression {
         check(best(inventory) == 0, "broken held tool selects the remaining tool");
         check(!SlotHandler.equipMiningTool(inventory, 40, hotbar -> {throw new AssertionError();}), "offhand rejected");
         water();
+        DirtPitRegression.run();
         System.out.println("Mining regression checks passed: " + checks);
     }
 

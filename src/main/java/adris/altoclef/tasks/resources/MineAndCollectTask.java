@@ -6,10 +6,12 @@ import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
+import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.component.DataComponents;
@@ -163,10 +165,17 @@ public class MineAndCollectTask extends ResourceTask {
         private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
         private final Task _pickupTask;
         private BlockPos _miningPos;
+        private final boolean _gatheringDirt;
+        private final Map<BlockPos, Integer> _retryAfter = new HashMap<>();
+        private final DirtProgress _dirtProgress = new DirtProgress();
+        private DirtMiningTerrain.Step _step;
+        private int _stepStarted, _nextTerrainCheck;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
             _targets = targets;
+            _gatheringDirt = Arrays.stream(targets).anyMatch(target -> target.matches(Items.DIRT))
+                    && Arrays.stream(blocks).allMatch(block -> DirtMiningTerrain.dirt(block.defaultBlockState()));
             _pickupTask = new PickupDroppedItemTask(_targets, true);
         }
 
@@ -183,11 +192,26 @@ public class MineAndCollectTask extends ResourceTask {
 
         @Override
         protected Optional<Object> getClosestTo(AltoClef mod, Vec3 pos) {
-            Optional<BlockPos> closestBlock = mod.getBlockTracker().getNearestTracking(pos, check -> {
-                if (_blacklist.contains(check)) return false;
-                if (mod.getBlockTracker().unreachable(check)) return false;
-                return WorldHelper.canBreak(mod, check);
-            }, _blocks);
+            BlockPos feet = mod.getPlayer().blockPosition();
+            Optional<BlockPos> closestBlock = Optional.empty();
+            boolean continuingBreak = _gatheringDirt && _miningPos != null && isValid(mod, _miningPos);
+            if (_gatheringDirt) {
+                if (continuingBreak) {
+                    closestBlock = Optional.of(_miningPos);
+                } else {
+                    closestBlock = DirtMiningTerrain.localTarget(feet, p -> mod.level().hasChunkAt(p)
+                            && isRequestedBlock(mod.level().getBlockState(p).getBlock())
+                            && !_retryAfter.containsKey(p) && LookHelper.getReach(p).isPresent()
+                            && WorldHelper.canBreak(mod, p));
+                }
+            }
+            if (closestBlock.isEmpty()) {
+                closestBlock = mod.getBlockTracker().getNearestTracking(pos, check -> {
+                    if (_gatheringDirt && (DirtMiningTerrain.supportsPlayer(feet, check) || _retryAfter.containsKey(check))) return false;
+                    if (_blacklist.contains(check) || mod.getBlockTracker().unreachable(check)) return false;
+                    return WorldHelper.canBreak(mod, check);
+                }, _blocks);
+            }
 
             Optional<ItemEntity> closestDrop = Optional.empty();
             if (mod.getEntityTracker().itemDropped(_targets)) {
@@ -202,6 +226,12 @@ public class MineAndCollectTask extends ResourceTask {
                 return closestDrop.map(Object.class::cast);
             }
 
+            // Collect nearby drops between breaks without abandoning a block mid-swing.
+            if (_gatheringDirt && !continuingBreak && closestDrop.isPresent()) {
+                ItemEntity drop = closestDrop.get();
+                if (drop.distanceToSqr(pos) <= 9 && Math.abs(drop.getY() - pos.y) < 1) return Optional.of(drop);
+            }
+
             if (dropSq <= blockSq) {
                 return closestDrop.map(Object.class::cast);
             } else {
@@ -214,8 +244,32 @@ public class MineAndCollectTask extends ResourceTask {
             return mod.getPlayer().position();
         }
 
+        private boolean isRequestedBlock(Block block) {
+            for (Block wanted : _blocks) if (wanted == block) return true;
+            return false;
+        }
+
         @Override
         protected Task onTick(AltoClef mod) {
+            if (_gatheringDirt) {
+                int tick = mod.getPlayer().tickCount;
+                _retryAfter.values().removeIf(until -> tick >= until);
+                Task stepTask = escapeDirtPit(mod, tick);
+                if (stepTask != null) return stepTask;
+                if (_miningPos != null && !mod.getFoodChain().needsToEat()
+                        && !mod.getExtraBaritoneSettings().isInteractionPaused()) {
+                    double progress = _miningPos.equals(mod.getControllerExtras().getBreakingBlockPos())
+                            ? mod.getControllerExtras().getBreakingBlockProgress() : 0;
+                    if (_dirtProgress.stalled(_miningPos, mod.getPlayer().position(), progress)) {
+                        _retryAfter.put(_miningPos, tick + 300);
+                        resetSearch();
+                        _miningPos = null;
+                        _dirtProgress.reset();
+                        _nextTerrainCheck = tick;
+                    }
+                }
+                return super.onTick(mod);
+            }
             if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 _progressChecker.reset();
             }
@@ -230,6 +284,48 @@ public class MineAndCollectTask extends ResourceTask {
             return super.onTick(mod);
         }
 
+        private Task escapeDirtPit(AltoClef mod, int tick) {
+            var player = mod.getPlayer();
+            BlockPos feet = player.blockPosition();
+            if (player.isInWater() || player.isPassenger() || mod.getFoodChain().needsToEat()
+                    || mod.getExtraBaritoneSettings().isInteractionPaused()) {
+                _step = null;
+                return null;
+            }
+            if (_step != null) {
+                BlockPos cut = _step.obstruction();
+                boolean done = cut == null ? feet.equals(_step.stand()) && player.onGround()
+                        : !DirtMiningTerrain.dirt(mod.level().getBlockState(cut));
+                boolean landingChanged = cut == null && !DirtMiningTerrain.canStand(mod.level(), _step.stand());
+                if (done || landingChanged) {
+                    _step = null;
+                    _nextTerrainCheck = tick;
+                } else if (tick - _stepStarted >= 100 || cut != null && !WorldHelper.canBreak(mod, cut)) {
+                    // An unconfirmed dig or failed jump must yield to ordinary collection.
+                    _step = null;
+                    _nextTerrainCheck = tick + 200;
+                }
+            }
+            if (_step == null && tick >= _nextTerrainCheck && player.onGround()) {
+                _nextTerrainCheck = tick + 20;
+                _step = DirtMiningTerrain.stepOut(mod.level(), feet, mod.level()::hasChunkAt,
+                        cut -> WorldHelper.canBreak(mod, cut) && LookHelper.getReach(cut).isPresent());
+                if (_step != null) {
+                    _stepStarted = tick;
+                    _miningPos = null;
+                    _dirtProgress.reset();
+                    resetSearch();
+                }
+            }
+            if (_step == null) return null;
+            if (_step.obstruction() != null) {
+                setDebugState("Clearing headroom for a step out of the dirt pit");
+                return new DestroyBlockTask(_step.obstruction());
+            }
+            setDebugState("Climbing out of the dirt pit");
+            return new GetToBlockTask(_step.stand());
+        }
+
         @Override
         protected Task getGoalTask(Object obj) {
             if (obj instanceof BlockPos newPos) {
@@ -241,6 +337,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
             if (obj instanceof ItemEntity) {
                 _miningPos = null;
+                _dirtProgress.reset();
                 return _pickupTask;
             }
             throw new UnsupportedOperationException("Shouldn't try to get the goal from object " + obj + " of type " + (obj != null ? obj.getClass().toString() : "(null object)"));
@@ -249,9 +346,12 @@ public class MineAndCollectTask extends ResourceTask {
         @Override
         protected boolean isValid(AltoClef mod, Object obj) {
             if (obj instanceof BlockPos b) {
+                if (_blacklist.contains(b) || _gatheringDirt && (_retryAfter.containsKey(b)
+                        || DirtMiningTerrain.supportsPlayer(mod.getPlayer().blockPosition(), b))) return false;
                 return mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {
+                if (!drop.isAlive()) return false;
                 Item item = drop.getItem().getItem();
                 if (_targets != null) {
                     for (ItemTarget target : _targets) {
@@ -266,6 +366,10 @@ public class MineAndCollectTask extends ResourceTask {
         @Override
         protected void onStart(AltoClef mod) {
             _progressChecker.reset();
+            _step = null;
+            _nextTerrainCheck = 0;
+            _retryAfter.clear();
+            _dirtProgress.reset();
             _miningPos = null;
         }
 
