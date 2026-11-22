@@ -6,9 +6,26 @@
 
 ## Don't Just Automate. Think.
 
-DeepClef is an AI-powered Minecraft agent for **Java Edition 26.3 (Wilderness Bound)** with Fabric, built upon [AltoClef](https://github.com/gaucho-matrero/altoclef). It perceives its surroundings, makes decisions, and adapts its actions in real time.
+> **Note:** This is a vibe coding project — built through AI-assisted, conversation-driven iteration. Expect rough edges.
 
-Powered by the **DeepSeek API**, DeepClef turns natural-language instructions into in-game perception, planning, and execution: explore, gather resources, craft and upgrade equipment, fight, ride, sail across water and ice, and fly with elytra — and in multiplayer it can read the chat, reply to teammates, and adjust its ongoing plan.
+DeepClef is an AI Minecraft agent for **Java Edition 26.3 (Wilderness Bound)** on Fabric, built upon [AltoClef](https://github.com/gaucho-matrero/altoclef). Powered by the **DeepSeek API**, it perceives what is actually around it, plans in steps, acts through native game inputs, and confirms every action against the real result instead of trusting its own narration.
+
+**Release `26.3-M1`.** The first release in which DeepClef can play by itself: it gets through the first day, decides what to do next, remembers what happened, and talks to the people around it.
+
+---
+
+## Two modes, one per world
+
+The first time you enter a save or a server, DeepClef asks which behaviour system that world should use:
+
+| | **Assistant mode** | **Player mode** |
+|---|---|---|
+| When idle | Waits for your instructions | Chooses its own next goal and plays |
+| `@ds ...` means | A task to plan and execute | Something you say to it |
+| Multiplayer chat | Auto-replies only if enabled (`@ds chat on`) | Joins public chat by default |
+| Typical use | On-demand automation | Watching an AI actually live in your world |
+
+The choice is bound to that save (single-player) or that `host:port` (multiplayer) and reused after rejoining, respawning or changing dimension. Closing the prompt keeps the world manual for that session. To switch later, edit the binding while out of game — see [Choosing a mode](#choosing-a-mode).
 
 ---
 
@@ -18,55 +35,152 @@ Like AltoClef, DeepClef fully automates a Minecraft account. **Do not use it on 
 
 ---
 
-## Features
+## Highlights
 
-### 🧠 DeepSeek AI agent (`@ds`)
+- **Player mode** — an autonomous loop: observe, choose one short goal with a stated reason, act, verify, record, repeat. Local survival reflexes, visible-only gathering, portable crafting, long-running projects and the vanilla advancement tree.
+- **Memory that outlives the session** — per-save facts (places, containers, project progress, promises) and a per-character memory that crosses saves (lessons, preferences, thinking habits), consolidated in the background.
+- **Seed knowledge** — 12 curated cards about the first night, mining, the Nether, the End and post-dragon goals, shipped inside the jar and recalled from a local index.
+- **Runtime generalization** — items, recipes, menus and machine GUIs are discovered at runtime through `altoclef_action`, so new or modded content does not need dedicated code.
+- **Multiplayer social behaviour** — in player mode it joins public chat, answers direct questions, follows group conversation, and treats help requests as its own commitments.
+- **The full 26.3 AltoClef feature set** — spear combat, oxygen-aware swimming, boats and ice roads, elytra, smithing, multi-step tasks, and the 26.3 content port.
 
-Natural-language control through DeepSeek function calling. The model plans in steps, executes real in-game actions through tools, reads the results, and adjusts:
+---
 
-- **Perception tools** — `altoclef_screenshot` (sees the actual game view), `altoclef_look`, `altoclef_entities`, `altoclef_block_at`, `altoclef_status`, `altoclef_inventory`, `altoclef_equipment`, `altoclef_list_resources`, `altoclef_capabilities`
-- **Action tools** — `altoclef_walk` / `altoclef_break` / `altoclef_place` (fine-grained manual movement and block handling), `altoclef_boat` (sail water and ice roads), `altoclef_elytra` (fly and land safely), `altoclef_smithing` (armor trims and netherite upgrades), `altoclef_execute` (the full `@` command library as macro tasks), `altoclef_stop`
-- **Chat tools** — `altoclef_chat` (read / status / send) for multiplayer cooperation
-- **Live thinking overlay** on the right side of the screen (streamed reasoning, resizable with `@dssize`)
-- **1M-token context window** with automatic compaction at ~80% usage, and per-world conversation history that survives restarts
-- Runs one task at a time; new instructions **interject** the running task instead of colliding
+## Player mode
 
-### 🌍 Full Minecraft 26.3 content adaptation
+### A round of life
 
-The entire AltoClef task system was ported and adapted to 26.3:
+The bot always has one current intention and at most one body action. When a task ends, it fails, or something meaningful changes, it asks the model for **one short goal plus a reason**, then repeats. Waiting for dawn, a friend or a material is itself an activity with a wake-up condition — it never falls back to "waiting for orders" just because a plan finished.
 
-- **Spears** (7 materials) as a first-class weapon type with real poke combat — approach → aim → charge (with per-material activation delay and start-distance lead) → stab → retreat, using vanilla `piercing_weapon`/`kinetic_weapon` mechanics
-- **New mobs**: Creaking (hostile only while active), Parched, Sulfur Cubes (passive, but fled when primed with TNT), Camel Husks / Zombie Horses / Zombie Nautili (passive mounts), Copper Golem / Happy Ghast / Nautilus (neutral)
-- **New blocks & items**: copper equipment and building family, pale oak & poplar woods, sulfur family, leaf litter (used as fuel), straw beds, cushions, harnesses, craftable saddle / name tag / lodestone, and more
-- **New recipes & smelting** catalogue, including the full colored wool/cushion/harness loops
+- **Observation** — from one eye position it samples 32 horizontal directions × 8 pitches. The near field is 16 blocks of actually lit surfaces, visible mobs and interactive blocks; the far field follows compass directions up to render distance and fog. Every query re-projects rays; a previously seen canopy only suggests where to look.
+- **Local reflex layer** — runs every tick under the planner: head underwater with less than a third of its air left triggers an immediate surface (it may interrupt its own plan), damage or low health or nightfall can trigger a four-second rest, hunger eats carried food when the spot is safe.
+- **Verified results** — walking is confirmed against actual coordinates, gathering against real inventory deltas, crafting against the output slot and consumed materials. A receipt that only says "submitted" is not a success.
+- **Decision panel** — the top-right overlay shows the current stage, the reason for the choice, the last action receipt and the chat state. `F1` hides it.
 
-### 🏊 Swimming and oxygen-aware navigation
+### Surviving and gathering
 
-- `@swim goto <x> <y> <z>` follows a rolling 3D route inside loaded water; `@swim surface <x> <z>` crosses along the surface.
-- Long underwater trips can ascend, approach along the surface, then dive near the destination. The final dive requires a complete checked route and enough air to return; reaching the surface above the target does not complete an XYZ goal.
-- `@swim ascend` finds a breathable refuge and replenishes air; `@swim status` reports actual oxygen and navigation state.
-- Ordinary `@goto` falls back to swimming when a water crossing has no usable boat, then resumes walking on shore.
-- Air reserves account for the return route. The agent can use existing air pockets and bubble columns, sneak near magma, or place a carried wooden door when a reachable refuge is unavailable.
-- DeepSeek uses `altoclef_swim` and receives real completion/failure results. Trips can start in water, a door air pocket, or on a nearby bank (water within 8 blocks horizontally and 3 vertically). Replenishing air preserves the destination. Open water uses direct corridors and coarse 3D search, with fine steps around obstacles; no automatic door gathering or bubble-column construction is performed.
-### 💬 Multiplayer chat awareness
+It starts from what it can see. Logs, stone and ores are the first harvest targets; it checks the lit face, reach distance and the tool in hand, then mines and picks up **the same visible drop within 8 blocks**, losing it when it leaves sight. With materials it already has, it crafts basic tools in the portable 2×2 grid one batch at a time, and the receipt lists the net inventory change on both sides.
 
-DeepClef observes player chat in the current connection and can respond:
+Perception is deliberately bounded: hidden ores, mobs behind walls and unopened containers never enter the model, and navigation may only read collision geometry in a small box around the body (4 blocks horizontally, 2 down, 3 up) to step and swim safely.
 
-- While an `@ds` task runs, new chat is fed to the model as environment observations (with sender/channel metadata) — it can reply publicly or privately via `altoclef_chat` and adapt its plan
-- Idle auto-reply for mentions/whispers: `@ds chat on` / `@ds chat off` / `@ds chat status`
-- Guardrails: chat is treated as data, never as instructions — it cannot change the agent's identity, leak the API key or prompt, run pasted commands, forward private messages to public chat, or spam (rate limits, dedupe, 256-char cap, `[DeepClef]` prefix in public chat)
+### Projects and milestones
+
+Three layers of state are kept per save:
+
+1. **Survival milestones** — iron, the Nether, the End, the dragon, elytra, beacon, in order.
+2. **A project** — up to four verifiable stages, e.g. "set up a crafting table and sticks, then finish this stretch of exploration".
+3. **The vanilla advancement tree** — the client's synced progress and real parent/child links supply visible candidates whose parent is already done.
+
+Progress lives in `player_project.json` in that save's character directory and is shown by the HUD and `@status`. Milestones stay recorded even if the items are used up or the dimension is left; a project that stalls for three autonomous attempts is postponed instead of repeating forever; side branches (an unfired ancient-city clue, a visible trial spawner) are considered while the main project waits.
+
+### Friends and multiplayer
+
+In player mode, multiplayer chat is on by default. With one other player, everything they say is treated as addressed to the bot; with three or more, public conversation is considered and the bot decides whether to join or stay quiet. Whispers are answered privately. Requests are queued (up to eight, duplicates merged), answered when safe, and kept as commitments in that save — it checks the delivery against chest and inventory changes rather than claiming it is done.
+
+### Talking to it
+
+| Command | Effect |
+|---|---|
+| `@ds 你在做什么？` / `@ds progress` | What it is doing right now, current step and last receipt |
+| `@ds pause` | Hands control to you and stops the autonomous loop |
+| `@ds resume` | Re-reads the world and continues on its own |
+| `@status` | Mode, position, current project and milestone |
+| `@stop` (or `Ctrl+K`) | Stops all automation |
+| `@memory ...` | Inspect or correct what it remembers (see below) |
+
+Anything else you type after `@ds` in player mode is a message to the bot, not a task for it.
+
+### Cost
+
+Player decisions run on a rolling one-hour budget of **1,000,000 tokens**, with **768 output tokens** per decision. When multiplayer chat is enabled, autonomous decisions are capped at 800,000 so 20% stays reserved for conversation. There is no fixed requests-per-hour cap. If the key is missing, the endpoint keeps failing or the budget runs out, it falls back to configured local idle commands and known activities instead of burning requests.
+
+---
+
+## Assistant mode
+
+`@ds <instruction>` plans and executes through function calling. The model works in steps, reads each tool result, and adjusts. There are **24 tools**:
+
+| Group | Tools |
+|---|---|
+| Perception | `altoclef_screenshot`, `altoclef_look`, `altoclef_entities`, `altoclef_block_at`, `altoclef_status`, `altoclef_inventory`, `altoclef_equipment`, `altoclef_list_resources`, `altoclef_capabilities`, `altoclef_knowledge` |
+| Direct action | `altoclef_walk` (with `auto`/`sneak`/`sprint` gait), `altoclef_break`, `altoclef_place` |
+| Atomic interaction | `altoclef_action` — see [Atomic interaction](#atomic-interaction-and-runtime-generalization) |
+| Skills | `altoclef_execute` (any `@` command as a macro), `altoclef_skill` (take over / resume native goals), `altoclef_boat`, `altoclef_elytra`, `altoclef_swim`, `altoclef_smithing`, `altoclef_combat` |
+| Social | `altoclef_chat` (read / status / send), `altoclef_feedback` (append a development report to the local feedback file) |
+| Control | `altoclef_stop` |
+
+- **Interjection** — sending another `@ds` instruction while a task runs feeds it to the running task instead of colliding with it.
+- **Long tasks** — `@ds progress` reports the original instruction, the current model step, the running tool and the native task chain; `@ds pause` lets you take over by hand; `@ds resume` re-reads position, inventory and screen and finishes the remaining work.
+- **Skill handoff** — a native gathering or crafting goal can be paused at a partial count, handled by hand or by other tools, then resumed against the same goal; deliveries are booked only when a chest window shows matching net gain and inventory net loss.
+- **Vision** — screenshots are sent only when appearance matters, one frame at a time, and the panel checks image capability on the configured endpoint.
+
+---
+
+## Atomic interaction and runtime generalization
+
+`altoclef_action` gives the model the same low-level controls a player has, so unfamiliar content does not need a dedicated task:
+
+- `observe`, `keys`, `equip`, `wear`, `aim`, `use_item`, `use_target`, `attack`, `press`, `hold`, `release`
+- `open_inventory`, `menu`, `inspect`, `slot_options`, `slot_click`, `button_click`, `close_menu`, `close_screen`
+- `recipes` (by output, by ingredient, or what the inventory can craft), `recipe_place`, `menu_view`, `menu_click`, `menu_scroll`
+- `sequence` — 2–4 steps with checkpoints, run one at a time by the client
+
+Details that matter:
+
+- Items are addressed by **runtime stack references** with real components, so the same registry ID with different enchantments or mod components stays distinguishable.
+- Recipes come from the server-synced recipe book; when a layout is known but not unlocked, the client can also read standard vanilla/mod recipe JSON and place materials by hand, verifying the actual output.
+- Standard menu slots, slots that accept a given stack (`slot_options`) and buttons identified by their hover text are handled natively; a fully self-drawn panel can be cropped with `menu_view` and clicked once with `menu_click`, re-checked against the current window, scale and nearby pixels.
+- Every side-effecting call takes an `action_id`; retries return the original receipt, and receipts distinguish `submitted`, `running`, `observed`, `failed`, `unknown` and `interrupted`. References expire when the world, window or observation changes, so a stale click cannot land on a new screen.
+
+---
+
+## Memory
+
+Two layers with a strict boundary:
+
+- **Save context** — what happened *here*: locations, containers, project stages, promises, observations. Stored under the save's `altoclef/actors/<profile>/` (`dsh_context.json`, `dsh_shots/`, `world_context.sqlite`).
+- **Character memory** — what carries across saves: verified lessons, preferences, thinking habits, with conditions and evidence. Stored in the game directory under `altoclef/memory/<profile>/memory.sqlite`.
+
+Coarse world facts stay local; only generalizable knowledge crosses saves. Background consolidation reads at most eight verified events per batch and reserves at most four requests per character per rolling hour. `deepseekMemoryReview=false` disables cloud review; `deepseekMemoryIdleOnly=true` only runs it while idle.
+
+**Seed knowledge** is the curated part: 12 cards about the first night, food and tools, mining and bases, the Nether and strongholds, the End and the dragon, post-dragon goals and optional branches. They ship inside the jar as read-only public knowledge — no teleporting, no coordinates, no loot claims.
+
+| Command | Purpose |
+|---|---|
+| `@memory seed <topic or card id>` | Read a seed card (e.g. `@memory seed 没有床`) |
+| `@memory world [keyword]` | Search this save's observed facts (supports 2-character Chinese) |
+| `@memory recall [keyword]` | Search this character's cross-save lessons |
+| `@memory mark <name>` | Mark your current position as a landmark in this save |
+| `@memory note <progress>` | Record project progress you state yourself |
+| `@memory map [landmark]` | List this dimension's known places |
+| `@memory status` | Backlog and background usage |
+| `@memory forget <id>` | Retire one remembered lesson and block late review from reviving it |
+| `@memory import-legacy` | Import old conversation history for the current world/profile |
+
+---
+
+## Beyond the AI
+
+The whole AltoClef task system was ported to 26.3, not just the model part:
+
+- **Spear combat** — all seven materials, with approach → aim → charge → jab → retreat, real occlusion checks against the vanilla ray, half-block recovery spacing, and mounted spear charges on a controlled horse.
+- **Swimming and oxygen** — `@swim goto x y z` / `surface x z` / `ascend` / `status`; surface sprinting when the water allows it, staged ascent → surface approach → final dive for long underwater goals, doors and bubble columns as air refuges, magma sneaking.
+- **Boats and ice roads** — auto placing and boarding, continuous rolling routes, ice-road driving with braking, and handing back to walking on the far bank.
+- **Elytra** — flight, landing, and an economy policy for fireworks.
+- **Smithing** — all 19 templates, netherite upgrades, armor trims, duplication.
+- **26.3 content** — pale oak and poplar woods, copper equipment and building families, sulfur, leaf litter, straw beds, cushions, harnesses, craftable saddle/name tag/lodestone, and the new mobs, as item and recipe entries the agent actually uses.
 
 ---
 
 ## Installation
 
 1. Install [Fabric Loader](https://fabricmc.net/use/) **0.19.5+** for **Minecraft 26.3** (Java 25 runtime).
-2. Download the latest jar from [Releases](../../releases/latest) (for example `deepclef-26.3-beta3.jar`) and drop it into your `mods` folder.
+2. Download `deepclef-26.3-M1.jar` from [Releases](../../releases/latest) and put it into your `mods` folder.
 3. Baritone is **bundled** — do not install a second Baritone.
-4. Remove any previous `altoclef-*.jar` / older DeepClef package to avoid conflicts. Fabric API is not required.
-5. Launch the game and join a world. A screen will ask for your DeepSeek API key on first `@ds` use (or press the button when prompted).
+4. Remove any previous `altoclef-*.jar` or older DeepClef package to avoid conflicts. Fabric API is not required.
+5. Launch the game and join a world. On first use of `@ds` a screen asks for your DeepSeek API key.
 
-Get an API key at [platform.deepseek.com](https://platform.deepseek.com/). The key is stored locally in your settings file and sent only to the configured DeepSeek endpoint.
+Get a key at [platform.deepseek.com](https://platform.deepseek.com/). The key is stored locally in your settings file and sent only to the configured DeepSeek endpoint.
 
 ---
 
@@ -74,18 +188,29 @@ Get an API key at [platform.deepseek.com](https://platform.deepseek.com/). The k
 
 | Command | What it does |
 |---|---|
-| `@ds 帮我挖64个铁锭` | Natural-language task through DeepSeek (works in Chinese, English, …) |
-| `@ds 坐船去 x=100 z=200` | Plan + execute boat navigation |
-| `@ds 用鞘翅飞到 1000 200 并降落` | Elytra flight with safe landing |
-| `@ds 把我的钻石长矛升级为下界合金` | Smithing upgrades & armor trims |
-| `@ds chat on` / `off` / `status` | Idle multiplayer chat auto-reply |
-| `@dsh` | DeepSeek config, token usage and history |
+| `@ds 帮我挖64个铁锭` | Natural-language task through DeepSeek (works in Chinese and English) |
+| `@ds 坐船去 x=100 z=200` | Plan and execute boat navigation |
+| `@ds 用鞘翅飞到 1000 200 并降落` | Elytra flight with a safe landing |
+| `@ds 把我的钻石长矛升级为下界合金` | Smithing upgrades and armor trims |
+| `@ds chat on` / `off` / `status` | Idle multiplayer auto-reply (assistant mode) |
+| `@dsh` | DeepSeek configuration, token usage and history |
 | `@dssize 1.2` | Resize the thinking overlay |
 | `@stop` (or `Ctrl+K`) | Stop the current task |
 
-Classic AltoClef commands all still work: `@help`, `@get`, `@goto`, `@food`, `@equip`, `@deposit`, `@follow`, `@hero`, `@boat`, `@elytra`, `@smithing`, `@locate_structure`, … — see [usage.md](usage.md) for the full reference.
+Classic AltoClef commands all still work: `@help`, `@get`, `@goto`, `@food`, `@equip`, `@deposit`, `@follow`, `@hero`, `@boat`, `@elytra`, `@smithing`, `@locate_structure`, `@opendoor`, `@swim`, `@memory`, … — see [usage.md](usage.md) for the full reference.
 
 Multi-line and chained commands are supported, e.g. `@get iron_axe; get log 100`.
+
+---
+
+## Choosing a mode
+
+The selection is read on join and is never changed from inside the game:
+
+- **Single-player** — `<save folder>/altoclef/mode.json` with `{"mode":"assistant"}` or `{"mode":"player"}`.
+- **Multiplayer** — `<game dir>/altoclef/server_modes.json`, keyed by normalised address, e.g. `{"example.org:25565":"player"}`. Changing the server's display name keeps the same binding; a different port is a different entry.
+
+Edit the file while out of the world and restart. If the file is unreadable, DeepClef reports the path and stays idle instead of overwriting an existing choice.
 
 ---
 
@@ -103,8 +228,10 @@ Settings live in `.minecraft/versions/<version>/altoclef/altoclef_settings.json`
 | `deepseekCompactionThreshold` | `0.8` | Fraction of context window that triggers automatic compaction |
 | `deepseekMaxSteps` | `160` | Foreground model rounds per `@ds` run (1–400). A tool batch counts once. |
 | `deepseekOverlayScale` | `0.75` | Thinking overlay font scale |
+| `deepseekMemoryReview` | `true` | Allow background consolidation of lessons and preferences |
+| `deepseekMemoryIdleOnly` | `false` | Only run background review while the player is idle |
 
-Conversation history is stored per world/save under the altoclef data directory and restored when you reconnect.
+Conversation history is stored per world/save and restored when you reconnect.
 
 ---
 
@@ -124,6 +251,7 @@ The playable mod jar is produced as `build/libs/deepclef-<version>.jar`. The bun
 
 - Minecraft `26.3`, Fabric Loader `>= 0.19.5`, Java 25.
 - Fabric mod id is `deepclef`; `altoclef` is registered as a compatibility alias, and internal Java packages, `altoclef_*` model-tool names, settings files and saved context paths are unchanged — custom setups keep working.
+- Older DeepClef/AltoClef jars should be removed; two copies of the agent in one instance will fight over control.
 
 ---
 
