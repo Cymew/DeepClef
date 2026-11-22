@@ -10,10 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Per-save DeepSeek conversation context: messages, token usage, compaction
- * summaries and turn count. Stored in the game folder under
- * {@code altoclef/dsh_contexts/<世界名或服务器名>.json} — one independent context
- * per Minecraft save/server.
+ * Conversation, tool history, screenshots and usage for a bound world and local profile.
+ * Unowned P1 files can be imported explicitly together with their referenced screenshots.
  */
 public final class DshContextStore {
 
@@ -51,6 +49,15 @@ public final class DshContextStore {
 
     /** The whole per-save context file. */
     public static class Context {
+        public boolean legacyImported;
+        @com.fasterxml.jackson.annotation.JsonIgnore public boolean readOnly;
+        public Context snapshot() {
+            Context copy=new Context();
+            copy.formatVersion=formatVersion;copy.readOnly=readOnly;copy.legacyImported=legacyImported;copy.messages=List.copyOf(messages);
+            copy.promptTokens=promptTokens;copy.completionTokens=completionTokens;
+            copy.compactions=compactions;copy.summaries=List.copyOf(summaries);copy.turns=turns;
+            return copy;
+        }
         public int formatVersion = 1;
         public List<StoredMessage> messages = new ArrayList<>();
         public long promptTokens = 0;
@@ -119,118 +126,86 @@ public final class DshContextStore {
         return safe;
     }
 
-    /**
-     * Path cache used only while the current world is being torn down, when the
-     * integrated server is already gone but we still want the final save to land
-     * in the world we just played. Keyed by the level instance so a different
-     * world can never reuse it.
-     */
-    private static Object _cachedLevel;
-    private static Path _cachedContextPath;
-    private static Path _cachedImageDir;
-
-    /**
-     * Singleplayer: the context lives INSIDE the save folder
-     * ({@code saves/<存档文件夹>/altoclef/dsh_context.json}) so deleting a save
-     * deletes its context and no two saves can ever share one. The folder path —
-     * never the display name — identifies the save, so recreating a world with
-     * the same name gets a fresh folder and therefore a fresh context.
-     *
-     * <p>Multiplayer: {@code altoclef/dsh_contexts/<server_name_ip>.json} in the
-     * game folder (a folder path does not exist for remote servers).
-     *
-     * @return the path, or null when it cannot be resolved (not in a world).
-     */
     public static Path contextPath(AltoClef mod) {
-        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
-        Path worldRoot = singleplayerWorldRoot(mod);
-        if (worldRoot != null) {
-            Path path = worldRoot.resolve("altoclef").resolve("dsh_context.json");
-            _cachedLevel = mod.level();
-            _cachedContextPath = path;
-            return path;
-        }
-        if (minecraft.getCurrentServer() != null) {
-            return minecraft.gameDirectory.toPath().resolve("altoclef").resolve("dsh_contexts")
-                    .resolve(safeId(mod) + ".json");
-        }
-        // World closing: only reuse the cache for the SAME level instance.
-        if (mod.level() != null && mod.level() == _cachedLevel) return _cachedContextPath;
-        return null; // unknown context: never write anywhere
+        var scope=mod.memory().scope();
+        return scope==null?null:scope.world().resolve("dsh_context.json");
     }
 
-    /** Directory holding screenshot images referenced by the context file. */
-    public static Path imageDirPath(AltoClef mod) {
-        net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
-        Path worldRoot = singleplayerWorldRoot(mod);
-        if (worldRoot != null) {
-            Path dir = worldRoot.resolve("altoclef").resolve("dsh_shots");
-            _cachedLevel = mod.level();
-            _cachedImageDir = dir;
-            return dir;
-        }
-        if (minecraft.getCurrentServer() != null) {
-            return minecraft.gameDirectory.toPath().resolve("altoclef").resolve("dsh_contexts")
-                    .resolve(safeId(mod) + "_shots");
-        }
-        if (mod.level() != null && mod.level() == _cachedLevel) return _cachedImageDir;
-        return null;
+    public record Legacy(Path json,Path shots) {}
+    public static Legacy legacy(AltoClef mod) {
+        Path root=singleplayerWorldRoot(mod);
+        return legacyPaths(net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath(),root,safeId(mod));
+    }
+    public static Legacy legacyPaths(Path game,Path root,String id) {
+        if(root!=null) return new Legacy(root.resolve("altoclef/dsh_context.json"),root.resolve("altoclef/dsh_shots"));
+        Path dir=game.resolve("altoclef/dsh_contexts");
+        return new Legacy(dir.resolve(id+".json"),dir.resolve(id+"_shots"));
     }
 
-    public static void saveImage(AltoClef mod, String fileName, byte[] bytes) {
-        try {
-            Path dir = imageDirPath(mod);
-            if (dir == null) return;
-            Files.createDirectories(dir);
-            Files.write(dir.resolve(fileName), bytes);
-        } catch (Throwable t) {
-            Debug.logError("[DeepClef @ds] image save failed: " + t.getMessage());
-        }
+    private static Context read(Path path) throws java.io.IOException {
+        var value=MAPPER.readValue(path.toFile(),Context.class);
+        if(value==null || value.messages==null || value.summaries==null || value.messages.contains(null)
+                || value.formatVersion!=1) throw new java.io.IOException("未知或损坏的历史格式");
+        return value;
     }
 
-    public static byte[] loadImage(AltoClef mod, String fileName) {
-        try {
-            Path dir = imageDirPath(mod);
-            if (dir == null) return null;
-            Path file = dir.resolve(fileName);
-            if (!Files.exists(file)) return null;
-            return Files.readAllBytes(file);
-        } catch (Throwable t) {
-            return null;
+    public static synchronized String importLegacy(Path dir,Legacy source) throws java.io.IOException {
+        Path target=dir.resolve("dsh_context.json");
+        Context current=Files.exists(target)?read(target):new Context();
+        if(current.legacyImported) return "本角色已导入过旧记录。";
+        if(!Files.isRegularFile(source.json())) return "这个旧文件名下没有对话记录。";
+        Context context=read(source.json());
+        for(var message:context.messages) {
+            String ref=message.imageDataUrl;
+            if(ref==null || !ref.startsWith("file:shots/")) continue;
+            String name=ref.substring("file:shots/".length());
+            if(!validImage(name)) throw new java.io.IOException("旧截图引用无效");
+            Path src=source.shots().resolve(name);
+            if(!Files.isRegularFile(src)) throw new java.io.IOException("旧截图缺失，保留原件："+name);
+            saveImage(dir,name,Files.readAllBytes(src));
         }
+        context.messages.addAll(current.messages);
+        context.summaries.addAll(current.summaries);
+        context.turns+=current.turns;context.compactions+=current.compactions;
+        context.promptTokens+=current.promptTokens;context.completionTokens+=current.completionTokens;
+        context.legacyImported=true;
+        save(dir,context);
+        return "已复制旧对话及引用截图。旧文件仍在原处。";
     }
-
+    private static boolean validImage(String name) {return name!=null && name.matches("[a-fA-F0-9]{1,64}\\.png");}
+    public static void saveImage(Path dir,String name,byte[] bytes) throws java.io.IOException {
+        if(!validImage(name) || !Files.isDirectory(dir)) throw new java.io.IOException("截图路径不可用");
+        Path shots=dir.resolve("dsh_shots");
+        try {Files.createDirectory(shots);}
+        catch(java.nio.file.FileAlreadyExistsException exists) {if(!Files.isDirectory(shots)) throw exists;}
+        Path file=shots.resolve(name);
+        if(Files.isRegularFile(file) && Files.size(file)==bytes.length) return;
+        atomicWrite(file,bytes);
+    }
+    public static byte[] loadImage(AltoClef mod,String name) {
+        var scope=mod.memory().scope();
+        if(scope==null || !validImage(name)) return null;
+        try {return Files.readAllBytes(scope.world().resolve("dsh_shots").resolve(name));}
+        catch(java.io.IOException e) {return null;}
+    }
     public static Context load(AltoClef mod) {
-        try {
-            Path path = contextPath(mod);
-            if (path == null || !Files.exists(path)) return new Context();
-            Context context = MAPPER.readValue(path.toFile(), Context.class);
-            Debug.logMessage("[DeepClef @ds] context loaded: " + path + " ("
-                    + (context.messages == null ? 0 : context.messages.size()) + " messages)");
-            return context;
-        } catch (Throwable t) {
-            Debug.logError("[DeepClef @ds] context load failed: " + t.getMessage());
-            return new Context();
+        Path path=contextPath(mod);
+        if(path==null || Files.notExists(path)) return new Context();
+        try {return read(path);}
+        catch(Exception e) {
+            Debug.logError("对话历史读取失败，已保留原件："+e.getMessage());
+            Context empty=new Context(); empty.readOnly=true; return empty;
         }
     }
-
-    private static Path _lastSavedPath;
-
-    public static void save(AltoClef mod, Context context) {
+    private static void atomicWrite(Path file,byte[] bytes) throws java.io.IOException {
+        Path temp=Files.createTempFile(file.getParent(),"dsh-",".tmp");
         try {
-            Path path = contextPath(mod);
-            if (path == null) {
-                Debug.logWarning("[DeepClef @ds] context not saved: no world context available");
-                return;
-            }
-            Files.createDirectories(path.getParent());
-            MAPPER.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), context);
-            if (!path.equals(_lastSavedPath)) {
-                _lastSavedPath = path;
-                Debug.logMessage("[DeepClef @ds] context saved to: " + path);
-            }
-        } catch (Throwable t) {
-            Debug.logError("[DeepClef @ds] context save failed: " + t.getMessage());
-        }
+            Files.write(temp,bytes);
+            Files.move(temp,file,java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } finally {Files.deleteIfExists(temp);}
+    }
+    public static synchronized void save(Path dir,Context context) throws java.io.IOException {
+        if(!context.readOnly && Files.isDirectory(dir)) atomicWrite(dir.resolve("dsh_context.json"),
+                MAPPER.writerWithDefaultPrettyPrinter().writeValueAsBytes(context));
     }
 }

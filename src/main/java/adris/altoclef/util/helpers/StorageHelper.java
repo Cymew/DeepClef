@@ -454,9 +454,8 @@ public class StorageHelper {
                     if (screen instanceof InventoryMenu || screen instanceof CraftingMenu) {
                         // Check crafting slots
                         boolean bigCrafting = (screen instanceof CraftingMenu);
-                        boolean bigRecipe = recipe.isBig();
                         for (int craftSlotIndex = 0; craftSlotIndex < (bigCrafting ? 9 : 4); ++craftSlotIndex) {
-                            Slot craftSlot = bigCrafting ? CraftingTableSlot.getInputSlot(craftSlotIndex, bigRecipe) : PlayerSlot.getCraftInputSlot(craftSlotIndex);
+                            Slot craftSlot = bigCrafting ? CraftingTableSlot.getInputSlot(craftSlotIndex, true) : PlayerSlot.getCraftInputSlot(craftSlotIndex);
                             ItemStack stack = StorageHelper.getItemStackInSlot(craftSlot);
                             if (needs.matches(stack.getItem())) {
                                 slotsWithItem.add(craftSlot);

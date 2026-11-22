@@ -1,0 +1,19 @@
+{
+  "criteria": {
+    "paper": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "minecraft:paper"
+          }
+        ]
+      }
+    }
+  },
+  "rewards": {
+    "recipes": [
+      "p38_trial:petal_candle"
+    ]
+  }
+}

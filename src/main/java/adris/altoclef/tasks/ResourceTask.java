@@ -40,6 +40,13 @@ import java.util.Optional;
 public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     protected final ItemTarget[] _itemTargets;
+    private boolean skipStoredOutput;
+
+    /** Deliveries already credited to this goal must stay in storage. Ingredients use their own tasks. */
+    public void leaveStoredOutput() {
+        skipStoredOutput = true;
+        _currentContainer = null;
+    }
 
     private PickupDroppedItemTask _pickupTask;
     private final EnsureFreePlayerCraftingGridTask _ensureFreeCraftingGridTask = new EnsureFreePlayerCraftingGridTask();
@@ -150,7 +157,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         }
 
         // Check for chests and grab resources from them.
-        if (_currentContainer == null) {
+        if (!skipStoredOutput && _currentContainer == null) {
             List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(Arrays.stream(_itemTargets).reduce(new Item[0], (items, target) -> ArrayUtils.addAll(items, target.getMatches()), ArrayUtils::addAll));
             if (!containersWithItem.isEmpty()) {
                 ContainerCache closest = containersWithItem.stream().min(StlHelper.compareValues(container -> container.blockPosition().distSqr(BlockPos.containing(mod.getPlayer().position())))).get();

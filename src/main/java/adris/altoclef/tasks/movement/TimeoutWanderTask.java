@@ -412,10 +412,16 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     }
 
     @Override
+    public void reset() {
+        super.reset();
+        _origin = null;
+    }
+
+    @Override
     public boolean isFinished(AltoClef mod) {
+        // The root chain checks completion before the first tick calls onStart.
+        if (_origin == null) return false;
         if (BoatNavigation.getControlledBoat(mod.getPlayer()) != null) return _boatWanderFinished;
-        // Why the heck did I add this in?
-        //if (_origin == null) return true;
 
         if (Float.isInfinite(_distanceToWander)) return false;
 

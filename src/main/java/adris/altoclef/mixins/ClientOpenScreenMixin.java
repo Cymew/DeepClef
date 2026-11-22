@@ -26,6 +26,7 @@ public final class ClientOpenScreenMixin {
             at = @At("TAIL")
     )
     private void onScreenOpenEnd(@Nullable Screen screen, CallbackInfo ci) {
+        adris.altoclef.util.WorldInputScreen.changed(((Gui)(Object)this).screen());
         EventBus.publish(new ScreenOpenEvent(screen, false));
     }
 }

@@ -47,6 +47,7 @@ public class Butler {
 
         // Receive system events
         EventBus.subscribe(ChatMessageEvent.class, evt -> {
+            if (mod.worldMode() != adris.altoclef.mode.WorldMode.ASSISTANT || mod.backgroundPaused()) return;
             boolean debug = ButlerConfig.getInstance().whisperFormatDebug;
             String message = evt.messageContent();
             String sender = evt.senderName();
@@ -118,6 +119,8 @@ public class Butler {
     public void tick() {
         // Nothing for now.
     }
+
+    public void releaseUser() { _currentUser = null; }
 
     public String getCurrentUser() {
         return _currentUser;

@@ -92,20 +92,8 @@ public class SmeltInSmokerTask extends ResourceTask {
         mod.getBlockTracker().stopTracking(Blocks.SMOKER);
         mod.getBehaviour().pop();
         // Close smoker screen
-        ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
-        if (!cursorStack.isEmpty()) {
-            Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().handleInventoryMouseClick(slot, 0, ContainerInput.PICKUP));
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().handleInventoryMouseClick(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-            }
-            Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-            // Try throwing away cursor slot if it's garbage
-            garbage.ifPresent(slot -> mod.getSlotHandler().handleInventoryMouseClick(slot, 0, ContainerInput.PICKUP));
-            mod.getSlotHandler().handleInventoryMouseClick(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-        } else {
-            StorageHelper.closeScreen();
-        }
+        if (mod.getPlayer() != null && mod.getPlayer().containerMenu instanceof SmokerMenu)
+            mod.getPlayer().closeContainer();
     }
 
     @Override
@@ -254,25 +242,8 @@ public class SmeltInSmokerTask extends ResourceTask {
             }
             if (!output.isEmpty()) {
                 setDebugState("Receiving Output");
-                // Ensure our cursor is empty/can receive our item
-                ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-                if (!ItemHelper.canStackTogether(output, cursor)) {
-                    Optional<Slot> toFit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
-                    if (toFit.isPresent()) {
-                        mod.getSlotHandler().handleInventoryMouseClick(toFit.get(), 0, ContainerInput.PICKUP);
-                        return null;
-                    } else {
-                        // Eh screw it
-                        if (ItemHelper.canThrowAwayStack(mod, cursor)) {
-                            mod.getSlotHandler().handleInventoryMouseClick(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-                            return null;
-                        }
-                    }
-                }
-                // Pick up
-                mod.getSlotHandler().handleInventoryMouseClick(SmokerSlot.OUTPUT_SLOT, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().handleInventoryMouseClick(SmokerSlot.OUTPUT_SLOT, 0, ContainerInput.QUICK_MOVE);
                 return null;
-                // return new MoveItemToSlotTask(new ItemTarget(output.getItem(), output.getCount()), toMoveTo.get(), mod -> FurnaceSlot.OUTPUT_SLOT);
             }
 
             // Fill in input if needed

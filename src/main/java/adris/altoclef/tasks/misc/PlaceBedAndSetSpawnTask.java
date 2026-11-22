@@ -242,7 +242,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
             return null;
         }
 
-        if (_sleepAttemptMade) {
+        if (_sleepAttemptMade && !_stayInBed) {
             if (_bedInteractTimeout.elapsed()) {
                 Debug.logMessage("Failed to get \"Respawn point set\" message or sleeping, assuming that this bed already contains our spawn.");
                 _spawnSet = true;
@@ -313,6 +313,14 @@ public class PlaceBedAndSetSpawnTask extends Task {
                     }
                     // Keep track of where our spawn point is
                     _progressChecker.reset();
+                    if (_stayInBed) {
+                        var rule = mod.level().environmentAttributes().getValue(
+                                net.minecraft.world.attribute.EnvironmentAttributes.BED_RULE, _bedForSpawnPoint);
+                        if (rule.destroyOnUse() || rule.destroyOnLeave() || !rule.canSleep(mod.level())) {
+                            setDebugState("床已找到，等待可入睡时段");
+                            return null;
+                        }
+                    }
                     return new InteractWithBlockTask(_bedForSpawnPoint);
                 }, bed);
             }
@@ -498,6 +506,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         boolean timerElapsed = _inBedTimer != null && _inBedTimer.elapsed();
 
         // Check if spawnpoint is set, player is not sleeping, and timer has elapsed
+        if (_stayInBed) return _wasSleeping && !isSleeping;
         boolean isFinished = _spawnSet && !isSleeping && timerElapsed;
 
         return isFinished;

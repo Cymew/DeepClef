@@ -3,7 +3,6 @@ package adris.altoclef.commands;
 import adris.altoclef.AltoClef;
 import adris.altoclef.commandsystem.ArgParser;
 import adris.altoclef.commandsystem.Command;
-import adris.altoclef.util.DeepSeekAgent;
 
 public class StopCommand extends Command {
 
@@ -13,9 +12,8 @@ public class StopCommand extends Command {
 
     @Override
     protected void call(AltoClef mod, ArgParser parser) {
-        DeepSeekAgent.cancel();
-        if (mod.getChatService() != null) mod.getChatService().pauseAfterStop();
-        mod.getUserTaskChain().cancel(mod);
+        mod.stopAutomation();
+        mod.log("已停止。可继续手动游玩、下达新任务，或用 @resume 恢复后台行为。");
         finish();
     }
 }

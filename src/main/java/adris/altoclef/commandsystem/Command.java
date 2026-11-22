@@ -30,6 +30,9 @@ public abstract class Command {
             _onFinish.run();
     }
 
+    /** Capture this invocation before asynchronous work or another invocation replaces it. */
+    protected Runnable completion() { return _onFinish == null ? () -> {} : _onFinish; }
+
     public String getHelpRepresentation() {
         StringBuilder sb = new StringBuilder(_name);
         for (ArgBase arg : parser.getArgs()) {

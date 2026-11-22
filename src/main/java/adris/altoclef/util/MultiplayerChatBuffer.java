@@ -28,6 +28,11 @@ public final class MultiplayerChatBuffer {
     /** Returns zero for self echoes, empty observations or a duplicate delivery. */
     public long add(UUID senderId, String senderName, String content, String channel,
                     String signature, long now, UUID selfId) {
+        return add(senderId, senderName, content, channel, signature, now, selfId, true);
+    }
+
+    long add(UUID senderId, String senderName, String content, String channel,
+             String signature, long now, UUID selfId, boolean deduplicateText) {
         if (senderId == null || senderId.equals(selfId) || senderName == null || senderName.isBlank()
                 || content == null || content.isBlank()) return 0;
         String name = bounded(senderName.trim(), 64);
@@ -37,7 +42,7 @@ public final class MultiplayerChatBuffer {
         String textKey = "text:" + senderId + ':' + body;
         String signatureKey = signed.isEmpty() ? null : "signature:" + signed;
         prune(now);
-        if (recent(textKey, now, DUPLICATE_WINDOW_MS)
+        if (deduplicateText && recent(textKey, now, DUPLICATE_WINDOW_MS)
                 || signatureKey != null && recent(signatureKey, now, SIGNATURE_WINDOW_MS)) return 0;
         remember(textKey, now);
         if (signatureKey != null) remember(signatureKey, now);

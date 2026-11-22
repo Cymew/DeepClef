@@ -261,7 +261,7 @@ public final class ElytraFlightTerrain implements ElytraRoutePlanner.Terrain {
     private void ensureFrame() {
         if (mod.getPlayer() != null) beginFrame(mod.getPlayer().tickCount, 2_000_000);
     }
-    private static boolean hazardous(BlockState state) {
+    static boolean hazardous(BlockState state) {
         return !state.getFluidState().isEmpty() || state.is(BlockTags.FIRE) || state.is(BlockTags.CLIMBABLE)
                 || state.is(Blocks.CACTUS) || state.is(Blocks.MAGMA_BLOCK) || state.is(Blocks.CAMPFIRE)
                 || state.is(Blocks.SOUL_CAMPFIRE) || state.is(Blocks.SWEET_BERRY_BUSH) || state.is(Blocks.WITHER_ROSE)

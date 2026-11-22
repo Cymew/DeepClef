@@ -144,14 +144,14 @@ public class FoodChain extends SingleTaskChain {
         }
         if (player.tickCount >= _retryMealAfterTick && _hasFood && _cachedPerfectFood.isPresent()
                 && player.getFoodData().getFoodLevel() < 20
-                && (needsToEat() || ownMeal && _requestFillup)) {
+                && (needsToEat() || mod.playerRoutine().wantsMeal() || ownMeal && _requestFillup)) {
             _plan = Plan.EAT;
             _plannedFood = ownMeal && _lockedFood != null && mod.getItemStorage().hasItem(_lockedFood)
                     ? _lockedFood : _cachedPerfectFood.get();
             return 66f;
         }
         Settings settings = mod.getModSettings();
-        if (_needsFood || _cachedFoodScore < settings.getMinimumFoodAllowed()) {
+        if (!mod.playerRoutine().ownsActivity() && (_needsFood || _cachedFoodScore < settings.getMinimumFoodAllowed())) {
             _needsFood = _cachedFoodScore < settings.getFoodUnitsToCollect();
             if (_cachedFoodScore < settings.getFoodUnitsToCollect()) {
                 _plan = Plan.COLLECT;
@@ -374,6 +374,8 @@ public class FoodChain extends SingleTaskChain {
 
         return false;
     }
+
+    public boolean hasMeal(AltoClef mod) { return calculateFood(mod).getSecond().isPresent(); }
 
     private Pair<Integer, Optional<Item>> calculateFood(AltoClef mod) {
         Item bestFood = null;

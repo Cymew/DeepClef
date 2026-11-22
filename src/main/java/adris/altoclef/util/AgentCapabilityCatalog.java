@@ -16,7 +16,7 @@ public final class AgentCapabilityCatalog {
     private static final String RELATED = "配套既有能力（10/17–18）：玩家先手动上马，已上鞍且实际可控制的马科坐骑由普通 @goto x z、@follow 玩家和相对移动接管，支持斜向、跳跃、坡道；不支持骆驼导航，也没有自动上马、驯服或装鞍工具。"
             + "长矛刺击/冲锋、骑马冲锋和骑乘弓箭由现有战斗/防御任务按装备自动执行。"
             + "玩家 PvP 用 `@punk <玩家名>`：近距离长矛或剑盾，远距离切弓，被射时举盾走位。"
-            + "没有 @ride、@horse、@spear、@bow、@attack 指令，不要编造攻击或实体交互工具。";
+            + "没有 @ride、@horse、@spear、@bow、@attack 指令；指定装备或单次实体/方块交互可使用 altoclef_action。";
 
     private static final String SOCIAL_USAGE = "10/25新增：多人聊天与动态合作。运行@ds任务时会感知新玩家聊天，模型用altoclef_chat的read/status/send查询与回复，"
             + "可结合反应调整自己的计划。公聊省略recipient，私聊指定在线玩家名；回复受长度/去重/节流限制，任务检查点不等于完成。"
@@ -24,6 +24,16 @@ public final class AgentCapabilityCatalog {
             + "这些开关由本地玩家输入，模型不得用execute递归调用ds。";
 
     private static final List<Entry> ENTRIES = List.of(
+            new Entry("atomic", "指定装备与原子交互", "模型工具 altoclef_action", "altoclef_action",
+                    "先 observe 获取真实背包栈和可见目标引用；equip 选择主副手，aim 瞄准，use_item 有界使用手中物品，use_target 对目标使用一次，attack 主手攻击一次。"
+                    + "有明确中途步骤的批量 get 才附 checkpoint_at，保留订单总数。要求制作并保留箱内已有成品时加 keep_stored_output=true。回执给出 goal_id 后可操作装备或机器；"
+                    + "临时交付先在目标容器 begin_delivery，转移后 finish_delivery，再 altoclef_skill resume。普通任务继续直接 get/goto。"
+                    + "sequence 一次组合 2..4 步，装备、穿戴或瞄准经核验后再进行末步交互；序列共用一个 ID。支持潜行和 1..40 tick 使用后释放；use_target 可追近同一已见实体，保留指定操作手。每步使用独立 action_id，重试相同 ID 返回已有结果。"
+                    + "keys 按名称查当前游戏绑定，press 点按（submitted 表示已发送；模组需持续输入时可用 press 加 hold_ticks=10），hold 限时保持，release 按原动作 ID 释放。wear 穿到指定盔甲槽。inspect 检查物品，open_inventory 打开背包，menu 读可见槽位，slot_click 左右键或快捷移动，陌生机器用 slot_options 查当前材料可放入的窗口槽与数量，button_click 操作有文字或提示的按钮，close_menu 关闭容器；close_screen 用当前 screen_ref 关闭地图等非容器界面。标准按钮和槽位无法表达的自绘控件可用 menu_view 获取当前面板局部图，menu_click 以局部图坐标点一次，menu_scroll 在图内列表滚动。切石配方列表支持按 menu_ref 直接滚动。recipes 按产物、材料或当前可用材料查客户端同步配方，recipe_place 在空合成网格请求摆一份，menu 核对产物后取出。未解锁时，按产物查询会补本机原版/模组的手摆布局，by=manual 可直接查询；停止拉弓也会按游戏规则松弦。",
+                    "@ds 把背包里的弓装备到主手，只换装备", "装备 主手 副手 武器 原子 操作 交互 瞄准 使用 弓 盾 equip aim use attack atomic menu inspect 槽位 光标 背包 拆分 转移 组件 模组物品 容器 按钮 合成 配方 材料 试配 recipes recipe_place"),
+            new Entry("opendoor","打开可见木门","`@opendoor`","altoclef_execute",
+                    "执行 opendoor，从视野中选门，走到可触及的位置后打开并核验。已开的门保持开启。",
+                    "@ds 走过去，把门打开","door 门 开门 木门 村庄"),
             new Entry("swimming", "三维游泳与补氧",
                     "`@swim status`；`@swim goto 100 45 200`；`@swim surface 500 200`；`@swim ascend`",
                     "altoclef_swim",
@@ -101,7 +111,7 @@ public final class AgentCapabilityCatalog {
     /** A literal keyword filters documentation only; it can never dispatch a command. */
     public static String query(String keyword) {
         String filter = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        StringBuilder out = new StringBuilder("新增功能与用法（更新至2026-10-29；坐标均为绝对值，游泳goto含Y）：\n\n");
+        StringBuilder out = new StringBuilder("新增功能与用法（更新至2026-11-08；坐标均为绝对值，游泳goto含Y）：\n\n");
         out.append("| 功能 | 使用方法 | 条件与行为 |\n|---|---|---|\n");
         int matches = 0;
         for (Entry entry : ENTRIES) {
@@ -135,7 +145,7 @@ public final class AgentCapabilityCatalog {
     }
 
     public static String markdown() {
-        StringBuilder out = new StringBuilder("# 新增功能速查（更新至2026-11-01）\n\n");
+        StringBuilder out = new StringBuilder("# 新增功能速查（更新至2026-11-08）\n\n");
         out.append("| 功能 | 使用方法 | 条件与行为 |\n|---|---|---|\n");
         for (Entry entry : ENTRIES) out.append(entry.row());
         out.append("\nDeepSeek直接输入：\n\n");

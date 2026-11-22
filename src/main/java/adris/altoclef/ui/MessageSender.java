@@ -76,6 +76,11 @@ public class MessageSender {
         for (BaseMessage message : cancelled) complete(message, "聊天发送失败：" + detail + "，排队消息已取消。");
     }
 
+    public void clearOnStop() {
+        cancelPendingCallbacks("自动操作已停止");
+        _whisperQueue.clear();
+    }
+
     private void enqueue(String recipient, String message, MessagePriority priority, Consumer<String> completion) {
         final String prepared;
         try {

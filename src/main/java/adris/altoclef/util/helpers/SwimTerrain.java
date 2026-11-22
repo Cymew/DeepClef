@@ -12,7 +12,7 @@ import java.util.Map;
 import static adris.altoclef.util.helpers.SwimRoutePlanner.Kind;
 
 /** Loaded blocks only, with full body sweeps rather than point/eye ray navigation. */
-public final class SwimTerrain implements SwimRoutePlanner.Terrain {
+public final class SwimTerrain implements SwimRoutePlanner.Terrain, ShoreCrossing.Terrain {
     private final AltoClef mod;
     private final double height;
     private final BlockPos origin;
@@ -66,6 +66,46 @@ public final class SwimTerrain implements SwimRoutePlanner.Terrain {
         return water(p.below()) ? (breathableAt(point) ? Kind.AIR : Kind.WATER) : Kind.BLOCKED;
     }
     public boolean clearBody(Vec3 p) { return clearBox(new AABB(p.x-.31,p.y+.01,p.z-.31,p.x+.31,p.y+height,p.z+.31)); }
+    @Override public Vec3 waterSurface(int x,int z,double feetY) {
+        int y=(int)Math.floor(feetY);
+        // A standing player's feet can briefly be two cells below the top during sprint entry.
+        int top = mod.getPlayer().isEyeInFluid(FluidTags.WATER) ? 2 : 1;
+        for(int dy=top;dy>=-2;dy--) {
+            BlockPos cell=new BlockPos(x,y+dy,z);
+            if(!water(cell) || !dry(cell.above())) continue;
+            if(dy==2 && !(water(cell.below()) && water(cell.below(2)))) continue;
+            Vec3 point=point(cell);
+            if(clearBody(point) && breathableAt(point)) return point;
+        }
+        return null;
+    }
+    @Override public boolean deep(Vec3 waterPoint) {
+        BlockPos below=BlockPos.containing(waterPoint).below();
+        return below.getY()>=origin.getY()-2 && water(below);
+    }
+    @Override public Vec3 landing(int x,int z,double feetY) {
+        for(int y=(int)Math.floor(feetY+1.5);y>=Math.floor(feetY)-1;y--) {
+            BlockPos cell=new BlockPos(x,y,z);
+            if(!loaded(cell) || !dry(cell)) continue;
+            var shape=mod.level().getBlockState(cell).getCollisionShape(mod.level(),cell);
+            if(shape.isEmpty()) continue;
+            double top=shape.max(net.minecraft.core.Direction.Axis.Y,.5,.5)+y;
+            if(!Double.isFinite(top) || top<feetY-.65 || top>feetY+1.65) continue;
+            Vec3 feet=new Vec3(x+.5,top+.005,z+.5);
+            if(dry(BlockPos.containing(feet)) && clearBox(new AABB(feet.x-.31,feet.y,feet.z-.31,
+                    feet.x+.31,feet.y+1.8,feet.z+.31))) return feet;
+        }
+        return null;
+    }
+    @Override public boolean swept(Vec3 start,Vec3 end) {
+        int pieces=Math.max(1,(int)Math.ceil(start.distanceTo(end)/.25));
+        for(int i=0;i<pieces;i++) {
+            Vec3 a=start.lerp(end,(double)i/pieces), b=start.lerp(end,(double)(i+1)/pieces);
+            if(!clearBox(new AABB(a.x-.31,a.y+.01,a.z-.31,a.x+.31,a.y+height,a.z+.31).expandTowards(b.subtract(a))))
+                return false;
+        }
+        return true;
+    }
     private boolean clearBox(AABB box) {
         if (!mod.level().getWorldBorder().isWithinBounds(box)) return false;
         for (BlockPos p:BlockPos.betweenClosed(BlockPos.containing(box.minX,box.minY,box.minZ),

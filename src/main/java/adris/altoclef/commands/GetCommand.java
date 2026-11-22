@@ -39,6 +39,7 @@ public class GetCommand extends Command {
         }
         if (targetTask != null) {
             Task executing = SmithingCommand.forExecution(mod.getUserTaskChain().getCurrentTask(), targetTask);
+            Runnable done = completion();
             mod.runUserTask(executing, () -> {
                 String failure = SmithingTaskOutcome.failure(executing, mod);
                 if (failure != null) {
@@ -46,7 +47,7 @@ public class GetCommand extends Command {
                     smithingFailureRevision++;
                     mod.log(failure);
                 }
-                finish();
+                done.run();
             });
         } else {
             finish();

@@ -1,0 +1,21 @@
+allprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin('java')) {
+            def output = layout.buildDirectory.dir('mode-regression')
+            def compile = tasks.register('compileModeRegression', JavaCompile) {
+                dependsOn tasks.named('classes')
+                source = fileTree(new File(rootProject.projectDir, 'tests/mode')) { include '*.java' }
+                classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+                destinationDirectory = output
+                options.encoding = 'UTF-8'
+                javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+            tasks.register('modeRegression', JavaExec) {
+                dependsOn compile
+                classpath = sourceSets.main.runtimeClasspath + files(output)
+                mainClass = 'adris.altoclef.mode.WorldModeRegression'
+                javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+        }
+    }
+}

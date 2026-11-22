@@ -20,10 +20,8 @@ public class CraftingTableSlot extends Slot {
     }
 
     public static CraftingTableSlot getInputSlot(int index, boolean big) {
-        index += 1;
         if (big) {
-            // Default
-            return new CraftingTableSlot(index);
+            return new CraftingTableSlot(index + 1);
         } else {
             // Small recipe in big window
             int x = index % 2;

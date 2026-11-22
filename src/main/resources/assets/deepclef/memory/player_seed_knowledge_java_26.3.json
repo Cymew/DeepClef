@@ -1,0 +1,437 @@
+{
+  "schema_version": 1,
+  "edition": "java",
+  "target_version": "26.3",
+  "cards": [
+    {
+      "id": "survival.workstations",
+      "revision": 1,
+      "title": "高炉等贵重工位放在哪里，用完是否带走",
+      "group": "据点与物资",
+      "cues": ["高炉", "烟熏炉", "工作方块", "地下临时熔炼", "离开矿洞", "地面据点"],
+      "advancement_ids": [],
+      "summary": "把反复使用的贵重工位集中在容易返回的地面据点。自己带进偏僻矿洞的高炉用完优先收回。",
+      "detail": {
+        "situation": "准备放下工位、安排下一批熔炼，或者即将离开临时作业点时。",
+        "choices": [
+          {"when": "已有地面工作台和熔炉，之后还会回来", "consider": "把高炉放在它们附近，记下据点坐标；下次从入口就能到达。"},
+          {"when": "自己的高炉临时放在井底、支洞或绕路才能到的位置", "consider": "确认这批已完成，取出成品、剩余原料和燃料，用合适的镐拆下高炉，看到高炉入包后再离开。"},
+          {"when": "工位便宜、留给同伴更有用，或属于村民及其他玩家", "consider": "普通工作台和熔炉可以留用。公共工位记位置，带走前先确认归属。"}
+        ],
+        "move_on": "贵重工位已在背包，或留在确定容易返回的据点，即可继续主线。",
+        "limits": "遇到危险先撤离；记录临时位置，安全后再决定是否回收。"
+      },
+      "related_ids": ["survival.tools_kit", "mining.iron_and_diamonds"],
+      "sources": ["玩家提出的工位管理经验"]
+    },
+    {
+      "id": "survival.first_day",
+      "revision": 1,
+      "title": "第一天先安顿还是先赶路",
+      "group": "开局生存",
+      "cues": ["刚出生", "天还亮着", "附近有树", "不知道先干什么"],
+      "advancement_ids": ["story/mine_stone"],
+      "summary": "先做工具和火把，再决定就地落脚还是带着材料找更好的地形；别让第一晚在赶路中到来。",
+      "detail": {
+        "situation": "刚进世界，周围资源还不清楚，天色还早时。",
+        "choices": [
+          {
+            "when": "附近有树、有石头，地面平坦或能挖进山坡",
+            "consider": "就地做工作台、木镐和石镐，顺手打食物、烧木炭；很快有火把和落脚点，但这里可能偏僻。"
+          },
+          {
+            "when": "周围只有沙、雪或海岛，走一段能看到森林或村庄",
+            "consider": "带上原木和食物转移，边走边记地形；长期资源更好，但第一晚可能没床。"
+          },
+          {
+            "when": "朋友已经在附近搭好落脚点",
+            "consider": "先过去共用工作台和熔炉，再补自己的工具；省时间，但要问清公用箱子。"
+          }
+        ],
+        "move_on": "做出石镐、有火把和食物，就能判断今晚留不留；天暗还没遮蔽，先挖进山坡。",
+        "limits": "服务器若限制破坏方块或开死亡掉落，就地挖洞和带家当转移要跟着变。"
+      },
+      "related_ids": ["survival.first_night", "survival.tools_kit"],
+      "sources": [
+        "Minecraft Wiki：Advancement（story/mine_stone，https://minecraft.wiki/w/Advancement）",
+        "Minecraft Wiki：Pickaxe（https://minecraft.wiki/w/Pickaxe）",
+        "Minecraft Wiki：Charcoal（https://minecraft.wiki/w/Charcoal）"
+      ]
+    },
+    {
+      "id": "survival.first_night",
+      "revision": 1,
+      "title": "天黑以后还要不要赶路",
+      "group": "开局生存",
+      "cues": ["天要黑了", "没有床", "夜里赶路", "附近有怪"],
+      "advancement_ids": ["adventure/sleep_in_bed"],
+      "summary": "夜里先看威胁、照明和退路，再决定赶路还是落脚；能安全睡下时，顺手把重生点定下来。",
+      "detail": {
+        "situation": "太阳落下、没有可靠落脚点，或正在犹豫要不要连夜赶路时。",
+        "choices": [
+          {
+            "when": "有床，附近没有怪，当前也允许睡觉",
+            "consider": "睡下跳过夜晚，顺手定重生点；联机要等主世界的人都睡，或看服务器的睡眠比例。"
+          },
+          {
+            "when": "没有床，但凑得出羊毛和木板，或在废弃营地找到麦秆床",
+            "consider": "普通床能睡还能定重生点；麦秆床只顶一晚、不定重生点，适合借宿，别当主基地。"
+          },
+          {
+            "when": "床被方块挡住、附近有怪，或自己正在受伤",
+            "consider": "别硬睡，先挖进山坡或搭封闭小屋，留出口和火把；睡觉要求附近没怪。"
+          }
+        ],
+        "move_on": "天亮、怪清掉或有封闭空间，再决定赶路；一直被打断，就先守到白天。",
+        "limits": "普通床在下界和末地会爆炸；服务器可能禁止睡觉或调整睡眠条件。"
+      },
+      "related_ids": ["survival.first_day", "nether.prep_and_return"],
+      "sources": [
+        "Minecraft Wiki：Bed（https://minecraft.wiki/w/Bed）",
+        "Minecraft Wiki：Straw Bed（https://minecraft.wiki/w/Straw_Bed）",
+        "Minecraft Wiki：Advancement（adventure/sleep_in_bed，https://minecraft.wiki/w/Advancement）",
+        "Minecraft Wiki：Java Edition 26.3（https://minecraft.wiki/w/Java_Edition_26.3）"
+      ]
+    },
+    {
+      "id": "survival.food",
+      "revision": 1,
+      "title": "饿了先吃什么、什么时候该停下来",
+      "group": "开局生存",
+      "cues": ["肚子饿了", "血量在掉", "想一直冲刺", "找到一堆生肉"],
+      "advancement_ids": [],
+      "summary": "先看饥饿条和血量再决定吃生食还是熟食；饥饿条够高才会自然回血，别在危险处硬扛。",
+      "detail": {
+        "situation": "饥饿条下降、血量不满，或准备长途跋涉、下矿、打怪前。",
+        "choices": [
+          {
+            "when": "有生肉，也有熔炉或篝火",
+            "consider": "先烤熟再吃，熟食回复更多；赶时间才生吃，别把生肉当正餐。"
+          },
+          {
+            "when": "饥饿条见底、血量也在掉",
+            "consider": "先脱离战斗再吃；饥饿为零会持续掉血，难度越高越危险，别边打边啃。"
+          },
+          {
+            "when": "饥饿条还比较满，只是血量没满",
+            "consider": "可以先不吃，等自然回血；饥饿条高或饱和度高时才会回血，掉下去就停。"
+          }
+        ],
+        "move_on": "血量回满、饥饿条回到较满，或找到稳定食物来源，就可以继续原计划。",
+        "limits": "和平难度不掉饥饿；困难难度饥饿会致死；带负面效果的食物要看状态决定。"
+      },
+      "related_ids": ["survival.first_day", "mining.iron_and_diamonds"],
+      "sources": [
+        "Minecraft Wiki：Food（https://minecraft.wiki/w/Food）"
+      ]
+    },
+    {
+      "id": "survival.tools_kit",
+      "revision": 1,
+      "title": "出门带什么工具才算够",
+      "group": "开局生存",
+      "cues": ["背包塞满了", "镐快坏了", "准备下矿", "不知道带几把镐"],
+      "advancement_ids": ["story/upgrade_tools", "story/iron_tools"],
+      "summary": "先想这趟要挖什么，再带对应等级的镐和少量备件；工具够用就走，别把全部家当背出门。",
+      "detail": {
+        "situation": "准备下矿、远征，或背包快满时。",
+        "choices": [
+          {
+            "when": "只是挖石头、煤和铁",
+            "consider": "石镐就够，带一把备用和几块木头；铁镐留给钻石、金和红石。"
+          },
+          {
+            "when": "目标是钻石、黑曜石或远古残骸",
+            "consider": "至少带铁镐；黑曜石和远古残骸要钻石镐，没到那个等级就先改目标。"
+          },
+          {
+            "when": "手头有铜锭，装备还没升级",
+            "consider": "可以做铜工具或铜盔甲过渡；强不强看物品栏的伤害提示和耐久条，不值得为它耽误铁器。"
+          }
+        ],
+        "move_on": "工具够挖目标方块、还有一把备用，就可以出发；镐快坏时先回去补，别在深处赌耐久。",
+        "limits": "附魔、耐久和经验修补会改变取舍；服务器若关闭死亡不掉落，备份工具更值钱。"
+      },
+      "related_ids": ["mining.iron_and_diamonds", "survival.first_day"],
+      "sources": [
+        "Minecraft Wiki：Pickaxe（https://minecraft.wiki/w/Pickaxe）",
+        "Minecraft Wiki：Copper（https://minecraft.wiki/w/Copper）",
+        "Minecraft Wiki：Advancement（story/upgrade_tools、story/iron_tools，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "mining.iron_and_diamonds",
+      "revision": 1,
+      "title": "挖到铁以后先做什么",
+      "group": "物资与探索",
+      "cues": ["挖到铁了", "想挖钻石", "洞穴很深", "看到岩浆"],
+      "advancement_ids": ["story/smelt_iron", "story/mine_diamond"],
+      "summary": "先烧铁做镐、盾和桶，再考虑往深处找钻石；下矿前留好回程和照明，见到岩浆先想退路。",
+      "detail": {
+        "situation": "拿到第一批铁、准备深入洞穴或寻找钻石时。",
+        "choices": [
+          {
+            "when": "铁不多，只有几块",
+            "consider": "优先铁镐、盾牌、铁桶和打火石；铁盔甲可以晚点凑，工具和保命件先做。"
+          },
+          {
+            "when": "已经能稳定挖铁，想往深处找钻石",
+            "consider": "带铁镐以上、食物、方块和水桶，沿已知路线往下；钻石要铁镐，黑曜石和远古残骸要钻石镐。"
+          },
+          {
+            "when": "洞穴里有岩浆、暗处有怪",
+            "consider": "先封路、插火把、留一条能跑回去的通道；听到怪声多就先退，别在死路里硬打。"
+          }
+        ],
+        "move_on": "做出铁镐、盾和桶，或这趟带回钻石、黑曜石，就回地面整理；反复死亡或补给见底，就换浅层挖。",
+        "limits": "深板岩层和洞穴地形会改变风险；没有水桶时别贴着岩浆挖。"
+      },
+      "related_ids": ["survival.tools_kit", "nether.prep_and_return"],
+      "sources": [
+        "Minecraft Wiki：Pickaxe（https://minecraft.wiki/w/Pickaxe）",
+        "Minecraft Wiki：Advancement（story/smelt_iron、story/mine_diamond，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "nether.prep_and_return",
+      "revision": 1,
+      "title": "去下界前要带什么、怎么回",
+      "group": "维度与主线",
+      "cues": ["有黑曜石了", "准备去下界", "找烈焰棒", "传送门另一边是岩浆"],
+      "advancement_ids": ["story/enter_the_nether", "nether/obtain_blaze_rod"],
+      "summary": "下界先想好回程和落脚点：带方块、食物和打火石，别在下界睡床；找到下界要塞再决定深入还是撤退。",
+      "detail": {
+        "situation": "黑曜石够了、准备第一次进下界，或去找烈焰棒和凋灵骷髅时。",
+        "choices": [
+          {
+            "when": "传送门搭好，但另一边情况不明",
+            "consider": "带方块、食物、打火石和镐过去，把传送门围起来、记坐标；先探一小圈，别扎进熔岩海。"
+          },
+          {
+            "when": "没有现成传送门，但有黑曜石和打火石",
+            "consider": "搭最小框架点火，也可以找废弃传送门补全；带足方块，回程往往更需要搭路。"
+          },
+          {
+            "when": "已经找到下界要塞",
+            "consider": "先清退路再打烈焰人；要头就在要塞里刷凋灵骷髅，别在熔岩边恋战。"
+          }
+        ],
+        "move_on": "拿到烈焰棒或凋灵骷髅头，或补给见底、传送门被围，就回主世界；下界赶路能省主世界路程。",
+        "limits": "普通床在下界会爆炸；重生锚要萤石充能才能设重生点；服务器可能禁用下界。"
+      },
+      "related_ids": ["stronghold.eyes_and_portal", "survival.first_night"],
+      "sources": [
+        "Minecraft Wiki：Nether Portal（https://minecraft.wiki/w/Nether_Portal）",
+        "Minecraft Wiki：Respawn Anchor（https://minecraft.wiki/w/Respawn_Anchor）",
+        "Minecraft Wiki：Wither Skeleton（https://minecraft.wiki/w/Wither_Skeleton）",
+        "Minecraft Wiki：Advancement（story/enter_the_nether、nether/obtain_blaze_rod，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "stronghold.eyes_and_portal",
+      "revision": 1,
+      "title": "末影之眼往哪扔、要塞怎么找",
+      "group": "维度与主线",
+      "cues": ["有末影珍珠了", "想找要塞", "眼睛扔出去碎了", "传送门框架缺眼"],
+      "advancement_ids": ["story/follow_ender_eye", "story/enter_the_end"],
+      "summary": "先凑够末影之眼再沿指引找要塞；眼睛会碎，多备几颗；进传送门厅后先补满框架，别急着跳。",
+      "detail": {
+        "situation": "有了末影珍珠和烈焰粉，准备找要塞，或已经站在传送门厅里时。",
+        "choices": [
+          {
+            "when": "眼睛不多，只有一两颗",
+            "consider": "先去多打末影人、刷烈焰棒，多备几颗再出门；每扔一次都可能碎，留出余量。"
+          },
+          {
+            "when": "眼睛指向地下或一片海",
+            "consider": "跟着同一方向走，靠近时它会往下指；到了再往下挖，别在半路乱挖。"
+          },
+          {
+            "when": "找到传送门厅，框架缺眼",
+            "consider": "把缺的眼补上；有些框架生成时就带眼，补满就激活；先清掉厅里的怪再跳。"
+          }
+        ],
+        "move_on": "框架补满、传送门亮起，就回去补给再进末地；眼睛碎太多就先回去补货。",
+        "limits": "要塞可能被地形破坏；服务器若改结构生成，眼睛指向可能不准。"
+      },
+      "related_ids": ["end.dragon_fight", "nether.prep_and_return"],
+      "sources": [
+        "Minecraft Wiki：Eye of Ender（https://minecraft.wiki/w/Eye_of_Ender）",
+        "Minecraft Wiki：Stronghold（https://minecraft.wiki/w/Stronghold）",
+        "Minecraft Wiki：Advancement（story/follow_ender_eye、story/enter_the_end，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "end.dragon_fight",
+      "revision": 1,
+      "title": "打末影龙先清水晶还是先躲",
+      "group": "维度与主线",
+      "cues": ["进末地了", "龙在天上飞", "水晶在回血", "被龙撞下平台"],
+      "advancement_ids": ["story/enter_the_end", "end/kill_dragon"],
+      "summary": "先把柱顶水晶清掉，再找机会打龙；没把握就带够方块、食物和远程武器，别在边缘硬拼。",
+      "detail": {
+        "situation": "第一次进末地，或准备重新打龙时。",
+        "choices": [
+          {
+            "when": "水晶还在，龙一直回血",
+            "consider": "先拆水晶：能射就射，有铁栏杆罩住的绕上去或从侧面打；拆完再集中打龙。"
+          },
+          {
+            "when": "龙飞近或停下来时",
+            "consider": "趁它停住时近身输出；注意龙息和击退，站不稳就先退回掩体。"
+          },
+          {
+            "when": "补给不够、平台边缘危险",
+            "consider": "先搭安全平台、带水桶缓冲；没把握就撤回主世界补弓箭和食物，别硬拼。"
+          }
+        ],
+        "move_on": "水晶清空、龙血见底时继续；一直被打下平台或箭用光，就先退回主世界补给再回来。",
+        "limits": "龙会飞、会龙息，平台边缘没有护栏；多人时分工不同；重生龙要另放水晶。"
+      },
+      "related_ids": ["end.after_dragon", "stronghold.eyes_and_portal"],
+      "sources": [
+        "Minecraft Wiki：End Crystal（https://minecraft.wiki/w/End_Crystal）",
+        "Minecraft Wiki：Ender Dragon（https://minecraft.wiki/w/Ender_Dragon）",
+        "Minecraft Wiki：Advancement（end/kill_dragon，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "end.after_dragon",
+      "revision": 1,
+      "title": "龙死了以后先找折跃门还是先回家",
+      "group": "龙后与支线",
+      "cues": ["龙死了", "折跃门出现了", "想找鞘翅", "末地不能睡床"],
+      "advancement_ids": ["end/enter_end_gateway", "end/elytra"],
+      "summary": "龙死后先补状态再进折跃门；末地不能睡床，找到末地船拿到鞘翅就尽早回家。",
+      "detail": {
+        "situation": "刚杀死龙、准备去外岛找鞘翅，或已经在末地城迷路时。",
+        "choices": [
+          {
+            "when": "刚打完龙、状态不好",
+            "consider": "先回主世界补食物、箭和方块，再走折跃门；末地不能睡床，死了会回主世界的重生点。"
+          },
+          {
+            "when": "到了外岛，看到末地城",
+            "consider": "先找末地船，鞘翅在船上；城里潜影贝会让人飘起来，带盾和远程，别在窄桥上被推下去。"
+          },
+          {
+            "when": "拿到鞘翅，但没带烟花",
+            "consider": "先别急着飞远，走桥或搭路回去；鞘翅要靠烟花推进，没补给时滑翔容易掉进虚空。"
+          }
+        ],
+        "move_on": "拿到鞘翅、潜影壳或龙首，就收手回家；迷路或缺方块，先沿原路搭回去。",
+        "limits": "外岛掉进虚空装备会没；服务器可能限制飞行或传送；末地城高低落差大。"
+      },
+      "related_ids": ["end.dragon_fight"],
+      "sources": [
+        "Minecraft Wiki：End City（https://minecraft.wiki/w/End_City）",
+        "Minecraft Wiki：Elytra（https://minecraft.wiki/w/Elytra）",
+        "Minecraft Wiki：Advancement（end/enter_end_gateway、end/elytra，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "nether.wither_and_beacon",
+      "revision": 1,
+      "title": "什么时候值得去打凋灵",
+      "group": "龙后与支线",
+      "cues": ["有凋灵骷髅头了", "想开信标", "灵魂沙够了", "下界要塞刷头"],
+      "advancement_ids": ["nether/summon_wither", "nether/create_beacon"],
+      "summary": "先凑齐三个头再决定打不打；凋灵要在开阔、能躲的地方召唤，拿到下界之星后先想好信标放哪。",
+      "detail": {
+        "situation": "攒到凋灵骷髅头、准备召唤凋灵，或计划做信标时。",
+        "choices": [
+          {
+            "when": "只有一两个头",
+            "consider": "先回下界要塞刷，别急着召唤；头齐了再准备战场。"
+          },
+          {
+            "when": "头齐了，想在下界或主世界打",
+            "consider": "选开阔、有掩体、能跑的地方；它刚出现时会短暂无敌，随后爆炸，别贴着召唤。"
+          },
+          {
+            "when": "已经有下界之星",
+            "consider": "先做信标再选底座：铁块、金块、钻石块、绿宝石块或下界合金块都行，层数越高范围越大；信标上方要能见天。"
+          }
+        ],
+        "move_on": "凋灵倒下、拿到下界之星，或战场被破坏得没法打，就收手；信标激活后再慢慢加层。",
+        "limits": "召唤时的爆炸会破坏地形；信标需要露天和矿物块底座；服务器可能禁止破坏地形。"
+      },
+      "related_ids": ["nether.prep_and_return"],
+      "sources": [
+        "Minecraft Wiki：Wither（https://minecraft.wiki/w/Wither）",
+        "Minecraft Wiki：Beacon（https://minecraft.wiki/w/Beacon）",
+        "Minecraft Wiki：Advancement（nether/summon_wither、nether/create_beacon，https://minecraft.wiki/w/Advancement）"
+      ]
+    },
+    {
+      "id": "ancient_city.approach",
+      "revision": 1,
+      "title": "听到尖啸还要不要往远古城市走",
+      "group": "龙后与支线",
+      "cues": ["挖到深暗之域", "听到尖啸", "想找迅捷潜行", "营地地图指向远古城市"],
+      "advancement_ids": ["adventure/avoid_vibration"],
+      "summary": "先听尖啸、看退路再决定进不进远古城市；潜行能少惹监守者，但拿不到东西就该撤。",
+      "detail": {
+        "situation": "在深暗之域遇到幽匿尖啸体，或拿到指向远古城市的地图时。",
+        "choices": [
+          {
+            "when": "刚听到尖啸、还没被追",
+            "consider": "先停下、蹲下，别再踩尖啸体；警告会累积，踩多了会叫出监守者。"
+          },
+          {
+            "when": "想拿城里的箱子",
+            "consider": "先清出一条能跑的路，拿完就走；别在城里开矿或打怪，声音会引来监守者。"
+          },
+          {
+            "when": "监守者已经出现",
+            "consider": "别硬打，它的音波穿墙、无视护甲；找掩体往高处或远处撤，等它失去目标。"
+          }
+        ],
+        "move_on": "拿到回响碎片、唱片残片或盔甲纹饰就收手；警告越来越高、退路被堵，就立刻撤。",
+        "limits": "和平难度或关闭生成时不会出现监守者；深层洞穴容易迷路，带好方块和食物。"
+      },
+      "related_ids": ["trial_chambers.visit", "mining.iron_and_diamonds"],
+      "sources": [
+        "Minecraft Wiki：Ancient City（https://minecraft.wiki/w/Ancient_City）",
+        "Minecraft Wiki：Sculk Shrieker（https://minecraft.wiki/w/Sculk_Shrieker）",
+        "Minecraft Wiki：Warden（https://minecraft.wiki/w/Warden）",
+        "Minecraft Wiki：Abandoned Camp（https://minecraft.wiki/w/Abandoned_Camp）"
+      ]
+    },
+    {
+      "id": "trial_chambers.visit",
+      "revision": 1,
+      "title": "队友喊你去试炼密室，去不去",
+      "group": "龙后与支线",
+      "cues": ["队友邀请去试炼", "找到试炼钥匙", "看到宝库", "想拿重锤"],
+      "advancement_ids": ["adventure/minecraft_trials_edition", "adventure/under_lock_and_key"],
+      "summary": "先看队伍补给和退路再进试炼密室；用钥匙开宝库、按需决定要不要喝不祥之瓶加难度。",
+      "detail": {
+        "situation": "发现试炼密室、队友邀请同行，或准备刷试炼钥匙和重锤时。",
+        "choices": [
+          {
+            "when": "队伍人少、补给不足",
+            "consider": "先在外围清小怪、攒钥匙；试炼刷怪笼会刷出不少怪，别一个人冲进大厅。"
+          },
+          {
+            "when": "有试炼钥匙，看到宝库",
+            "consider": "开宝库拿奖励；每个宝库对每个玩家只能开一次，队友之间不用抢，但要各自留钥匙。"
+          },
+          {
+            "when": "想要重锤或不祥奖励",
+            "consider": "在密室里喝不祥之瓶触发不祥试炼，怪更强但可能出不祥钥匙；没把握就先打普通试炼。"
+          }
+        ],
+        "move_on": "拿到钥匙、开完宝库，或怪物越刷越多，就撤到入口整理；想刷重锤再计划下一轮。",
+        "limits": "不祥试炼难度高，沉重核心掉落看运气；服务器可能改怪物或掉落；密室地形复杂，容易迷路。"
+      },
+      "related_ids": ["ancient_city.approach", "survival.tools_kit"],
+      "sources": [
+        "Minecraft Wiki：Trial Chambers（https://minecraft.wiki/w/Trial_Chambers）",
+        "Minecraft Wiki：Vault（https://minecraft.wiki/w/Vault）",
+        "Minecraft Wiki：Mace（https://minecraft.wiki/w/Mace）",
+        "Minecraft Wiki：Advancement（adventure/minecraft_trials_edition、adventure/under_lock_and_key，https://minecraft.wiki/w/Advancement）"
+      ]
+    }
+  ]
+}

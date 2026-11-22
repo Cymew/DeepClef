@@ -77,7 +77,7 @@ public class CollectWoolTask extends ResourceTask {
             return getToCorrectDimensionTask(mod);
         }
 
-        if (mod.getItemStorage().hasItem(Items.SHEARS)) {
+        if (mod.getPlayer().getOffhandItem().is(Items.SHEARS) || mod.getItemStorage().hasItem(Items.SHEARS)) {
             // Shear sheep.
             return new ShearSheepTask();
         }

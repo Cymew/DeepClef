@@ -93,7 +93,7 @@ AltoClef 的经典指令全部可用：`@help`、`@get`、`@goto`、`@food`、`@
 | `deepseekMaxTokens` | `4096` | 单次请求最大输出 token 数 |
 | `deepseekTimeoutSeconds` | `300` | HTTP 超时时间 |
 | `deepseekCompactionThreshold` | `0.8` | 上下文用量达到该比例时触发自动压缩 |
-| `deepseekMaxSteps` | `60` | 每次 `@ds` 的最大规划/执行步数 |
+| `deepseekMaxSteps` | `160` | 每次 `@ds` 最多请求主模型的轮数（1–400），同轮的多个工具调用合计一步。 |
 | `deepseekOverlayScale` | `0.75` | 思考叠加层字号比例 |
 
 对话历史按存档保存在 altoclef 数据目录下，重新进入游戏时会自动恢复。

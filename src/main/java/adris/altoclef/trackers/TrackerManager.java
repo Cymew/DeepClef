@@ -10,15 +10,15 @@ public class TrackerManager {
 
     private final AltoClef _mod;
 
-    private boolean _wasInGame = false;
+    private net.minecraft.client.multiplayer.ClientPacketListener _connection;
 
     public TrackerManager(AltoClef mod) {
         _mod = mod;
     }
 
     public void tick() {
-        boolean inGame = AltoClef.inGame();
-        if (!inGame && _wasInGame) {
+        var connection = AltoClef.inGame() ? _mod.getPlayer().connection : null;
+        if (_connection != null && connection != _connection) {
             // Reset when we leave our world
             for (Tracker tracker : _trackers) {
                 tracker.reset();
@@ -27,7 +27,7 @@ public class TrackerManager {
             _mod.getChunkTracker().reset(_mod);
             _mod.getMiscBlockTracker().reset();
         }
-        _wasInGame = inGame;
+        _connection = connection;
 
         for (Tracker tracker : _trackers) {
             tracker.setDirty();

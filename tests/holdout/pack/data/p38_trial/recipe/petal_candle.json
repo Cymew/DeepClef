@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:paper",
+    "minecraft:dandelion"
+  ],
+  "result": {
+    "id": "minecraft:yellow_candle",
+    "count": 2,
+    "components": {
+      "minecraft:custom_name": {
+        "text": "花纸蜡烛"
+      }
+    }
+  }
+}

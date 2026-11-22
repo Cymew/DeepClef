@@ -12,6 +12,11 @@ public class GetWithinRangeOfBlockTask extends CustomBaritoneGoalTask {
     private final int _range;
 
     public GetWithinRangeOfBlockTask(BlockPos blockPos, int range) {
+        this(blockPos, range, true);
+    }
+
+    public GetWithinRangeOfBlockTask(BlockPos blockPos, int range, boolean wander) {
+        super(wander);
         _blockPos = blockPos;
         _range = range;
     }

@@ -1,0 +1,39 @@
+allprojects {
+    afterEvaluate {
+        if (!plugins.hasPlugin('java')) return
+        def fixtures = new File(rootProject.projectDir, 'tests/holdout')
+        def baseline = new File(rootProject.projectDir, '../tools/p38-baseline-20261121/deepclef-26.3-beta3.jar')
+        def pack = tasks.register('p38TrialPack', Zip) {
+            from new File(fixtures, 'pack')
+            destinationDirectory = layout.buildDirectory.dir('holdout')
+            archiveFileName = 'p38-petal-candle-26.3.zip'
+            preserveFileTimestamps = false
+            reproducibleFileOrder = true
+        }
+        def gameDir = providers.gradleProperty('holdoutGameDir').map { file(it) }
+        def mapMod = gameDir.map { dir -> fileTree(new File(dir, 'mods')) { include 'xaeroworldmap-fabric-*.jar' }.singleFile }
+        def bundled = tasks.register('extractHoldoutMapLibrary', Sync) {
+            from({ zipTree(mapMod.get()) }) { include 'META-INF/jars/xaerolib-*.jar' }
+            into layout.buildDirectory.dir('holdout/map-libraries')
+        }
+        def dependencies = files(baseline, mapMod, fileTree(layout.buildDirectory.dir('holdout/map-libraries')) { include '**/*.jar' })
+        def output = layout.buildDirectory.dir('holdout/classes')
+        def compile = tasks.register('compileP38Holdout', JavaCompile) {
+            dependsOn bundled
+            source = fileTree(fixtures) { include '*.java' }
+            classpath = dependencies + sourceSets.main.compileClasspath
+            destinationDirectory = output
+            options.encoding = 'UTF-8'
+            javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+        }
+        tasks.register('p38Holdout', JavaExec) {
+            dependsOn compile, pack
+            classpath = dependencies + files(output) + (sourceSets.main.runtimeClasspath - sourceSets.main.output)
+            mainClass = 'adris.altoclef.util.P38Holdout'
+            javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+            doFirst {
+                args baseline, mapMod.get(), new File(gameDir.get(), 'options.txt'), pack.get().archiveFile.get().asFile
+            }
+        }
+    }
+}

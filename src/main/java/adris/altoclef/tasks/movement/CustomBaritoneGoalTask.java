@@ -8,6 +8,9 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.AutoBoatPolicy;
 import adris.altoclef.util.helpers.ElytraEquipmentHelper;
 import adris.altoclef.util.helpers.MountedNavigation;
+import adris.altoclef.util.helpers.SwimTerrain;
+import adris.altoclef.util.helpers.ShoreCrossing;
+import adris.altoclef.util.helpers.SwimNavigation;
 import adris.altoclef.util.helpers.BoatNavigation;
 import adris.altoclef.util.helpers.MountedBlockGoal;
 import adris.altoclef.util.helpers.MountedTravelProgress;
@@ -78,7 +81,11 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     private int _automaticElytraStartTick, _automaticElytraLastProbe = Integer.MIN_VALUE / 2, _automaticElytraRetryAfter;
     private Object _automaticElytraWorld;
     private Vec3 _automaticElytraBlockedOrigin;
-    private adris.altoclef.util.helpers.SwimNavigation _swimming;
+    private SwimNavigation _swimming;
+    private final adris.altoclef.util.helpers.LandRouteWatch landRoute = new adris.altoclef.util.helpers.LandRouteWatch();
+    private Vec3 _entryPoint, _failedSwimOrigin;
+    private final java.util.Set<BlockPos> _failedEntries = new java.util.HashSet<>();
+    private int _swimFailures;
     private int _swimRetryAfter;
     public boolean hasSwimController() { return _swimming != null; }
 
@@ -305,8 +312,23 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             setDebugState(_swimming.result());
             _checker.reset(); stuckCheck.reset();
             if (outcome == adris.altoclef.util.helpers.SwimNavigation.Outcome.RUNNING) return null;
+            Debug.logInternal("陆水交接 " + outcome + " / " + _swimming.result() + " / 实到 " + mod.getPlayer().blockPosition().toShortString());
             _swimming.release(mod); _swimming = null;
-            _swimRetryAfter = mod.getPlayer().tickCount + 100;
+            if (outcome == SwimNavigation.Outcome.FAILED) {
+                if (_entryPoint != null) _failedEntries.add(BlockPos.containing(_entryPoint));
+                _failedSwimOrigin = mod.getPlayer().position();
+                _swimFailures++;
+            } else if (outcome == SwimNavigation.Outcome.ARRIVED && !_cachedGoal.isInGoal(mod.getPlayer().blockPosition())
+                    && preferSurface(mod, automaticElytraDestination(_cachedGoal), new SwimTerrain(mod))) {
+                // The same XZ can have a bridge or a ledge above it. Let walking solve the remaining height.
+                _failedSwimOrigin = mod.getPlayer().position();
+                _swimFailures = 3;
+            } else {
+                _failedEntries.clear();
+                _swimFailures=0;
+            }
+            _entryPoint=null;
+            _swimRetryAfter = mod.getPlayer().tickCount + 8;
             return null;
         }
         if (shouldProbeAutomaticElytra(mod)) {
@@ -338,22 +360,17 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
                 return null;
             }
         }
-        if (allowsAutomaticBoat() && mod.getTaskRunner().getCurrentTaskChain() instanceof UserTaskChain chain
-                && chain.getCurrentTask() == this && mod.getPlayer().isInWater() && !mod.getPlayer().isPassenger()
-                && mod.getPlayer().tickCount >= _swimRetryAfter) {
-            if (_cachedGoal == null) _cachedGoal = newGoal(mod);
-            BlockPos target = automaticElytraDestination(_cachedGoal);
-            if (target != null) {
-                // Actual underwater XYZ goals use volume navigation; land/XZ trips use the surface.
-                boolean surface = _cachedGoal instanceof GoalXZ || !mod.level().hasChunkAt(target)
-                        || !mod.level().getFluidState(target).is(net.minecraft.tags.FluidTags.WATER);
-                _swimming = new adris.altoclef.util.helpers.SwimNavigation(mod, target, surface, false, true);
-                mod.getClientBaritone().getCustomGoalProcess().onLostControl();
-                mod.getClientBaritone().getPathingBehavior().forceCancel();
-                _checker.reset(); stuckCheck.reset();
-                return null; // Let the previous walking child release its inputs first.
-            }
+        if ((allowsAutomaticBoat() || allowsSwimming()) && mod.getPlayer().onGround() && !mod.getPlayer().isInWater()
+                && landRoute.changed(mod)) {
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            landRoute.reset();
+            _checker.reset();
+            stuckCheck.reset();
+            setDebugState("前方落脚面变化，从当前位置重算。");
+            return null;
         }
+        if (tryStartSwimming(mod)) return null;
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _checker.reset();
         }
@@ -445,10 +462,69 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        landRoute.reset();
         if (_swimming != null) _swimming.release(mod);
+        _swimming=null;
+        _entryPoint=null;
+        _failedSwimOrigin=null;
+        _failedEntries.clear();
+        _swimFailures=0;
+        _swimRetryAfter=0;
         BoatNavigation.release(mod, this);
         MountedNavigation.release(mod, this);
         mod.getClientBaritone().getPathingBehavior().forceCancel();
+    }
+
+    protected boolean allowsSwimming() { return allowsAutomaticBoat(); }
+
+    protected boolean ownsSwimming(AltoClef mod) {
+        return mod.getTaskRunner().getCurrentTaskChain() instanceof UserTaskChain chain
+                && chain.getCurrentTask() == this;
+    }
+
+    private boolean tryStartSwimming(AltoClef mod) {
+        var player=mod.getPlayer();
+        if (!allowsSwimming() || !ownsSwimming(mod) || player.isPassenger() || player.isFallFlying()
+                || player.getAbilities().flying || player.isInLava() || player.tickCount<_swimRetryAfter) return false;
+        if (_failedSwimOrigin!=null && player.position().distanceToSqr(_failedSwimOrigin)>16) {
+            _swimFailures=0;
+            _failedEntries.clear();
+            _failedSwimOrigin=null;
+        }
+        if (_swimFailures>=3) return false; // Walking may route around this shore.
+        if (_cachedGoal==null) _cachedGoal=newGoal(mod);
+        BlockPos target=automaticElytraDestination(_cachedGoal);
+        if (target==null) return false;
+        SwimTerrain terrain=new SwimTerrain(mod);
+        Vec3 feet=player.position();
+        boolean wet=player.isInWater();
+        if (!wet && !player.onGround()) return false;
+        boolean wading=wet && player.onGround() && !player.isUnderWater() && !terrain.deep(feet);
+        Vec3 entrance=null;
+        if (!wet || wading) {
+            _swimRetryAfter=player.tickCount+4;
+            entrance=ShoreCrossing.entrance(terrain,feet,target,_failedEntries);
+            if (entrance==null) return false;
+        }
+        boolean surface=preferSurface(mod, target, terrain);
+        _entryPoint=entrance;
+        _swimming=new SwimNavigation(mod,target,surface,false,true,entrance);
+        mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        _checker.reset(); stuckCheck.reset();
+        String state=entrance==null?"已接水，步行交给游泳":"已选入水点 "+BlockPos.containing(entrance).toShortString();
+        setDebugState(state);
+        Debug.logInternal("陆水交接 "+state+" / "+(surface?"表游":"三维游泳")+" / 目标 "+target.toShortString());
+        return true;
+    }
+
+    private boolean preferSurface(AltoClef mod, BlockPos target, SwimTerrain terrain) {
+        if (_cachedGoal instanceof GoalXZ || target == null) return true;
+        BlockPos here = mod.getPlayer().blockPosition();
+        if (Math.abs(target.getX()-here.getX())>4 || Math.abs(target.getZ()-here.getZ())>4) return true;
+        if (target.getY()>=here.getY()-2 && target.getY()<=here.getY()+3) return !terrain.water(target);
+        // A supplied lower XYZ may need a final dive. Only take it where local water extends down.
+        return !(target.getY()<here.getY() && mod.getPlayer().isInWater() && terrain.deep(mod.getPlayer().position()));
     }
 
     protected abstract Goal newGoal(AltoClef mod);

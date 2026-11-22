@@ -1,0 +1,22 @@
+allprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin('java')) {
+            def output = layout.buildDirectory.dir('memory-regression')
+            def compile = tasks.register('compileMemoryRegression', JavaCompile) {
+                dependsOn tasks.named('classes')
+                source = fileTree(new File(rootProject.projectDir, 'tests/memory')) { include '*.java' }
+                classpath = sourceSets.main.compileClasspath + sourceSets.main.output
+                destinationDirectory = output
+                options.encoding = 'UTF-8'
+                javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+            tasks.register('memoryRegression', JavaExec) {
+                dependsOn compile, tasks.named('remapJar')
+                classpath = files(tasks.named('remapJar').flatMap { it.archiveFile }) + files(output) + sourceSets.main.runtimeClasspath
+                systemProperty 'memory.packaged', 'true'
+                mainClass = 'adris.altoclef.memory.MemoryRegression'
+                javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+            }
+        }
+    }
+}

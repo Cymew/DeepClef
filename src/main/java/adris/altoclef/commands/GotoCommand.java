@@ -39,6 +39,12 @@ public class GotoCommand extends Command {
     @Override
     protected void call(AltoClef mod, ArgParser parser) throws CommandException {
         GotoTarget target = parser.get(GotoTarget.class);
-        mod.runUserTask(getMovementTaskFor(target), this::finish);
+        Task task = getMovementTaskFor(target);
+        Runnable done = completion();
+        mod.runUserTask(task, () -> {
+            if (task instanceof GetToXZTask && mod.getPlayer() != null)
+                mod.log(GetToXZTask.arrivalReport(target.getX(), target.getZ(), mod.getPlayer().blockPosition()));
+            done.run();
+        });
     }
 }

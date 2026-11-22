@@ -42,6 +42,17 @@ public class DsCommand extends Command {
             return;
         }
 
+        if (mod.worldMode() == adris.altoclef.mode.WorldMode.PLAYER) {
+            mod.playerRoutine().localMessage(mod, instruction);
+            finish();
+            return;
+        }
+
+        if (DeepSeekAgent.handleTaskControl(mod, instruction)) {
+            finish();
+            return;
+        }
+
         if (!mod.getModSettings().hasDeepSeekApiKey()) {
             mod.logWarning("尚未配置 DeepSeek API Key，请在弹出的界面中输入。");
             Minecraft.getInstance().execute(() -> Minecraft.getInstance().gui.setScreen(new DeepSeekKeyScreen(mod.getModSettings())));
@@ -67,6 +78,6 @@ public class DsCommand extends Command {
             finish();
             return;
         }
-        DeepSeekAgent.start(mod, instruction, this::finish);
+        DeepSeekAgent.start(mod, instruction, completion());
     }
 }

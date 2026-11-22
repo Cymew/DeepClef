@@ -29,7 +29,7 @@ public class CollectCobbledDeepslateTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
-        return new MineAndCollectTask(Items.COBBLED_DEEPSLATE, 1, new Block[]{Blocks.DEEPSLATE, Blocks.COBBLED_DEEPSLATE}, MiningRequirement.WOOD);
+        return new MineAndCollectTask(Items.COBBLED_DEEPSLATE, _count, new Block[]{Blocks.DEEPSLATE, Blocks.COBBLED_DEEPSLATE}, MiningRequirement.WOOD);
     }
 
     @Override

@@ -24,6 +24,11 @@ public class ShearSheepTask extends AbstractDoToEntityTask {
 
     @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
+        var player = mod.getPlayer();
+        if (player.getOffhandItem().is(Items.SHEARS)) {
+            mod.getController().interact(player, entity, new EntityHitResult(entity), InteractionHand.OFF_HAND);
+            return null;
+        }
         if (!mod.getItemStorage().hasItem(Items.SHEARS)) {
             Debug.logWarning("Failed to shear sheep because you have no shears.");
             return null;

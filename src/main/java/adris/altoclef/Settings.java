@@ -9,6 +9,8 @@ import adris.altoclef.util.serialization.IFailableConfigFile;
 import adris.altoclef.util.serialization.ItemDeserializer;
 import adris.altoclef.util.serialization.ItemSerializer;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
@@ -86,6 +88,11 @@ public class Settings implements IFailableConfigFile {
      */
     private int deepseekMaxTokens = 4096;
 
+    private boolean deepseekMemoryReview = true;
+    private boolean deepseekMemoryIdleOnly = false;
+    public boolean memoryReviewEnabled() { return deepseekMemoryReview; }
+    public boolean memoryReviewIdleOnly() { return deepseekMemoryIdleOnly; }
+
     /**
      * HTTP timeout in seconds for DeepSeek requests.
      */
@@ -103,12 +110,26 @@ public class Settings implements IFailableConfigFile {
     private float deepseekOverlayScale = 0.75f;
 
     /**
-     * Maximum number of model/tool steps per {@code @ds} run (default 60).
+     * Maximum number of foreground model rounds per {@code @ds} run (default 160).
      * The 1M context window and auto-compaction comfortably support long runs;
      * when the limit is hit the conversation persists, so a new {@code @ds 继续}
      * resumes where it stopped.
      */
-    private int deepseekMaxSteps = 60;
+    private static final int DEFAULT_MODEL_ROUNDS = 160;
+    private int deepseekMaxSteps = DEFAULT_MODEL_ROUNDS;
+    private int deepseekStepBudgetVersion = 1;
+
+    public Settings() {}
+
+    // Migrate old generated defaults once. Users can still choose 60 after upgrading.
+    @JsonCreator
+    private Settings(@JsonProperty("deepseekMaxSteps") Integer savedSteps,
+                     @JsonProperty("deepseekStepBudgetVersion") Integer budgetVersion) {
+        if (savedSteps != null && (budgetVersion != null || savedSteps != 60)) {
+            deepseekMaxSteps = savedSteps;
+        }
+        if (budgetVersion != null) deepseekStepBudgetVersion = budgetVersion;
+    }
 
     /**
      * When logging to chat, will prepend this to each log.
@@ -732,7 +753,7 @@ public class Settings implements IFailableConfigFile {
     }
 
     public int getDeepSeekMaxSteps() {
-        return Math.max(1, Math.min(200, deepseekMaxSteps));
+        return Math.max(1, Math.min(400, deepseekMaxSteps));
     }
 
     @Override

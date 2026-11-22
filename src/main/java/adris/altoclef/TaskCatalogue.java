@@ -851,14 +851,17 @@ public class TaskCatalogue {
         return shear(name, new Block[]{toShear}, targets);
     }
 
+    // Resolve named ingredients on first use, after all catalogue entries have been registered.
     private static CataloguedResource shapedRecipe2x2(String name, Item match, int outputCount, String s0, String s1, String s2, String s3) {
-        CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3)}, outputCount);
-        return put(name, new Item[]{match}, count -> new CraftInInventoryTask(new RecipeTarget(match, count, recipe)));
+        var recipe = com.google.common.base.Suppliers.memoize(() ->
+                CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3)}, outputCount));
+        return put(name, new Item[]{match}, count -> new CraftInInventoryTask(new RecipeTarget(match, count, recipe.get())));
     }
 
     private static CataloguedResource shapedRecipe3x3(String name, Item match, int outputCount, String s0, String s1, String s2, String s3, String s4, String s5, String s6, String s7, String s8) {
-        CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3), t(s4), t(s5), t(s6), t(s7), t(s8)}, outputCount);
-        return put(name, new Item[]{match}, count -> new CraftInTableTask(new RecipeTarget(match, count, recipe)));
+        var recipe = com.google.common.base.Suppliers.memoize(() ->
+                CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3), t(s4), t(s5), t(s6), t(s7), t(s8)}, outputCount));
+        return put(name, new Item[]{match}, count -> new CraftInTableTask(new RecipeTarget(match, count, recipe.get())));
     }
 
     private static CataloguedResource shapedRecipe2x2Block(String name, Item match, String material) {

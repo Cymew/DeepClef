@@ -16,6 +16,22 @@ public class UserTaskChain extends SingleTaskChain {
     private final Stopwatch _taskStopwatch = new Stopwatch();
     private Runnable _currentOnFinish = null;
 
+    private java.util.UUID walkEvent;
+    private adris.altoclef.memory.MemoryScope walkScope;
+    private Object walkLevel;
+
+    private void endWalk(AltoClef mod,boolean completed) {
+        if (walkEvent!=null && walkScope==mod.memory().scope() && walkLevel==mod.level() && mod.getPlayer()!=null
+                && _mainTask instanceof adris.altoclef.tasks.movement.GetToXZTask walk) {
+            boolean arrived=completed && !walk.stopped() && walk.verifiedAt(mod);
+            mod.memory().record(walkEvent,arrived?"confirmed":"unfinished",arrived?"到达路标":"行走未完成",
+                    walk.targetDescription(),arrived?adris.altoclef.memory.Experience.Signal.ARRIVED:adris.altoclef.memory.Experience.Signal.NONE);
+        }
+        walkEvent=null;
+        walkScope=null;
+        walkLevel=null;
+    }
+
     private boolean _runningIdleTask;
     private boolean _nextTaskIdleFlag;
 
@@ -54,11 +70,23 @@ public class UserTaskChain extends SingleTaskChain {
         super.onTick(mod);
     }
 
-    public void cancel(AltoClef mod) {
-        if (_mainTask != null && _mainTask.isActive()) {
-            stop(mod);
-            onTaskFinish(mod);
+    public void finishPausedKey(AltoClef mod) {
+        if (_mainTask instanceof adris.altoclef.util.AtomicActions.ActionTask key && key.finishAtBlockingScreen()) {
+            finishTask(mod, false);
         }
+    }
+
+    public void cancel(AltoClef mod) {
+        if (_mainTask != null) finishTask(mod, true);
+    }
+
+    @Override
+    protected void onStop(AltoClef mod) {
+        endWalk(mod,false);
+        super.onStop(mod);
+        _currentOnFinish = null;
+        _nextTaskIdleFlag = false;
+        _runningIdleTask = false;
     }
 
     @Override
@@ -82,7 +110,14 @@ public class UserTaskChain extends SingleTaskChain {
         }
         mod.getTaskRunner().enable();
         _taskStopwatch.begin();
+        if (_mainTask==null || !_mainTask.equals(task)) endWalk(mod,false);
         setTask(task);
+        if (walkEvent==null && _mainTask instanceof adris.altoclef.tasks.movement.GetToXZTask walk) {
+            walkEvent=java.util.UUID.randomUUID();
+            walkScope=mod.memory().scope();
+            walkLevel=mod.level();
+            mod.memory().record(walkEvent,"pending","行走目标",walk.targetDescription(),adris.altoclef.memory.Experience.Signal.NONE);
+        }
 
         if (mod.getModSettings().failedToLoad()) {
             Debug.logWarning("Settings file failed to load at some point. Check logs for more info, or delete the" +
@@ -92,41 +127,36 @@ public class UserTaskChain extends SingleTaskChain {
 
     @Override
     protected void onTaskFinish(AltoClef mod) {
-        boolean shouldIdle = mod.getModSettings().shouldRunIdleCommandWhenNotActive();
-        if (!shouldIdle) {
-            // Stop.
-            mod.getTaskRunner().disable();
-            // Extra reset. Sometimes baritone is laggy and doesn't properly reset our press
-            mod.getClientBaritone().getInputOverrideHandler().clearAllKeys();
-        }
-        double seconds = _taskStopwatch.time();
+        finishTask(mod, false);
+    }
+
+    private void finishTask(AltoClef mod, boolean cancelled) {
+        endWalk(mod,!cancelled);
         Task oldTask = _mainTask;
-        _mainTask = null;
-        if (_currentOnFinish != null) {
-            //noinspection unchecked
-            _currentOnFinish.run();
+        Runnable completion = _currentOnFinish;
+        boolean wasIdle = _runningIdleTask;
+        double seconds = _taskStopwatch.time();
+        mod.getTaskRunner().disable();
+        mod.getClientBaritone().getInputOverrideHandler().clearAllKeys();
+        if (completion != null) completion.run();
+        if (_mainTask == null && !wasIdle) {
+            Debug.logMessage("User task %s. Took %s seconds.", cancelled ? "STOPPED" : "FINISHED", prettyPrintTimeDuration(seconds));
+            EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
         }
-        // our `onFinish` might have triggered more tasks.
-        boolean actuallyDone = _mainTask == null;
-        if (actuallyDone) {
-            if (!_runningIdleTask) {
-                Debug.logMessage("User task FINISHED. Took %s seconds.", prettyPrintTimeDuration(seconds));
-                EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
-            }
-            if (shouldIdle) {
-                AltoClef.getCommandExecutor().executeWithPrefix(mod.getModSettings().getIdleCommand());
-                signalNextTaskToBeIdleTask();
-                _runningIdleTask = true;
-            }
-        }
+        if (!cancelled) mod.startConfiguredIdleTask();
     }
 
     public boolean isRunningIdleTask() {
         return isActive() && _runningIdleTask;
     }
 
-    // The next task will be an idle task.
-    public void signalNextTaskToBeIdleTask() {
+    public void runConfiguredIdleCommand(AltoClef mod) {
+        if (_nextTaskIdleFlag) return;
         _nextTaskIdleFlag = true;
+        try {
+            AltoClef.getCommandExecutor().executeWithPrefix(mod.getModSettings().getIdleCommand());
+        } finally {
+            _nextTaskIdleFlag = false;
+        }
     }
 }

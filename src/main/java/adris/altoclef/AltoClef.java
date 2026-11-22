@@ -7,6 +7,12 @@ import adris.altoclef.control.InputControls;
 import adris.altoclef.control.MountedControlListener;
 import adris.altoclef.control.PlayerExtraController;
 import adris.altoclef.control.SlotHandler;
+import adris.altoclef.mode.WorldMode;
+import adris.altoclef.mode.WorldModeSession;
+import adris.altoclef.mode.WorldModeStore;
+import adris.altoclef.ui.WorldModeScreen;
+import adris.altoclef.util.DeepSeekAgent;
+import adris.altoclef.util.DshContextStore;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ClientRenderEvent;
 import adris.altoclef.eventbus.events.ClientTickEvent;
@@ -78,6 +84,34 @@ public class AltoClef implements ModInitializer {
     private CommandStatusOverlay _commandStatusOverlay;
     // DeepSeek key prompt bookkeeping
     private boolean _deepSeekKeyPrompted = false;
+    private final WorldModeSession _modeSession = new WorldModeSession();
+    private final adris.altoclef.memory.GameMemory _memory = new adris.altoclef.memory.GameMemory(this);
+    private final adris.altoclef.util.SceneObservation _scene = new adris.altoclef.util.SceneObservation();
+    private final adris.altoclef.util.PlayerRoutine _playerRoutine = new adris.altoclef.util.PlayerRoutine();
+    public adris.altoclef.util.PlayerRoutine playerRoutine() { return _playerRoutine; }
+    private boolean _backgroundPaused;
+    private net.minecraft.client.gui.screens.PauseScreen backgroundMenu;
+
+    private void updateBackgroundMenu() {
+        var mc = Minecraft.getInstance();
+        boolean authorized = DeepSeekAgent.hasLocalActionSession();
+        if (backgroundMenu != null) {
+            if (mc.gui.screen() != null || mc.player == null || mc.player.isDeadOrDying()) {
+                backgroundMenu = null;
+            } else if (mc.isWindowActive() || !authorized) {
+                var restore = backgroundMenu;
+                backgroundMenu = null;
+                mc.gui.setScreen(restore);
+            }
+        } else if (authorized && !mc.isWindowActive() && mc.gui.overlay() == null
+                && mc.gui.screen() instanceof net.minecraft.client.gui.screens.PauseScreen pause
+                && mc.player != null && mc.player.isAlive()) {
+            // Vanilla routes gameplay keys only with the menu closed. grabMouse() skips inactive windows.
+            backgroundMenu = pause;
+            mc.gui.setScreen(null);
+        }
+    }
+    private boolean _cancelKeyDown;
     // World/connection identity, used to drop bot state when the save changes
     private net.minecraft.client.multiplayer.ClientLevel _lastWorld;
     private net.minecraft.client.multiplayer.ClientPacketListener _lastConnection;
@@ -165,10 +199,7 @@ public class AltoClef implements ModInitializer {
                             != Items.GRAVEL).toList();
             getClientBaritoneSettings().acceptableThrowawayItems.value.addAll(baritoneCanPlace);
             // If we should run an idle command...
-            if ((!getUserTaskChain().isActive() || getUserTaskChain().isRunningIdleTask()) && getModSettings().shouldRunIdleCommandWhenNotActive()) {
-                getUserTaskChain().signalNextTaskToBeIdleTask();
-                getCommandExecutor().executeWithPrefix(getModSettings().getIdleCommand());
-            }
+            startConfiguredIdleTask();
             // Don't break blocks or place blocks where we are explicitly protected.
             getExtraBaritoneSettings().avoidBlockBreak(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
             getExtraBaritoneSettings().avoidBlockPlace(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
@@ -216,20 +247,25 @@ public class AltoClef implements ModInitializer {
         // this the @ds agent (and its conversation/task) survived across saves and
         // the model answered with the old save's context.
         checkWorldSwitch();
+        _trackerManager.tick();
+        updateModeBinding();
+        if (!hasWorldMode()) return;
 
         _inputControls.onTickPre();
 
         // Cancel shortcut
         boolean cancelShortcut = InputHelper.isKeyPressed(InputConstants.KEY_LCONTROL) && InputHelper.isKeyPressed(InputConstants.KEY_K);
-        if (cancelShortcut) {
-            _boatRecoveryObserver.reset();
-            adris.altoclef.util.DeepSeekAgent.cancel();
-            if (_chatService != null) _chatService.pauseAfterStop();
-            _userTaskChain.cancel(this);
-            if (_taskRunner.getCurrentTaskChain() != null) {
-                _taskRunner.getCurrentTaskChain().stop(this);
-            }
+        if (cancelShortcut && !_cancelKeyDown) stopAutomation();
+        _cancelKeyDown = cancelShortcut;
+        updateBackgroundMenu();
+        var client = Minecraft.getInstance();
+        if (DeepSeekAgent.hasLocalActionSession() && (client.isPaused()
+                || client.gui.screen() instanceof net.minecraft.client.gui.screens.PauseScreen)) {
+            getUserTaskChain().finishPausedKey(this);
+            return;
         }
+        _memory.tick();
+        _scene.tick(this);
 
         // TODO: should this go here?
         _storageTracker.setDirty();
@@ -243,9 +279,11 @@ public class AltoClef implements ModInitializer {
             Minecraft.getInstance().gui.setScreen(new DeepSeekKeyScreen(_settings));
         }
 
-        _trackerManager.tick();
         _blockTracker.preTickTask();
-        if (!cancelShortcut) _boatRecoveryObserver.tick(this);
+        if (!cancelShortcut && allowsBackgroundMovement()) {
+            _boatRecoveryObserver.tick(this);
+            _playerRoutine.tick(this);
+        }
         _taskRunner.tick();
         _blockTracker.postTickTask();
         MountedNavigation.endTick(this);
@@ -262,6 +300,100 @@ public class AltoClef implements ModInitializer {
 
     /// GETTERS AND SETTERS
 
+    public WorldMode worldMode() {
+        return inGame() ? _modeSession.current(Minecraft.getInstance().getConnection()) : null;
+    }
+
+    public adris.altoclef.memory.GameMemory memory() { return _memory; }
+    public adris.altoclef.util.SceneObservation scene() { return _scene; }
+    public boolean hasWorldMode() { return worldMode() != null; }
+    public boolean backgroundPaused() { return _backgroundPaused; }
+    public boolean allowsBackgroundMovement() { return !_backgroundPaused && !DeepSeekAgent.isManuallyPaused() && worldMode() == WorldMode.PLAYER; }
+
+    public void startConfiguredIdleTask() {
+        if (allowsBackgroundMovement() && _settings != null && _settings.shouldRunIdleCommandWhenNotActive()
+                && _playerRoutine.permitsConfiguredIdle(this) && !_userTaskChain.isActive() && !DeepSeekAgent.isBusy()) {
+            _userTaskChain.runConfiguredIdleCommand(this);
+        }
+    }
+
+    private void updateModeBinding() {
+        Minecraft client = Minecraft.getInstance();
+        var connection = client.getConnection();
+        _modeSession.enter(connection);
+        if (!inGame() || client.level == null) return;
+        if (_modeSession.needsIdentity()) {
+            try {
+                WorldModeStore store;
+                if (client.hasSingleplayerServer()) {
+                    var root = DshContextStore.singleplayerWorldRoot(this);
+                    if (root == null) return;
+                    store = WorldModeStore.save(root);
+                } else {
+                    var server = client.getCurrentServer();
+                    if (server == null || server.ip == null || server.ip.isBlank()) return;
+                    store = WorldModeStore.server(client.gameDirectory.toPath(), server.ip);
+                }
+                _modeSession.load(store);
+                if (hasWorldMode()) modeReady();
+            } catch (java.io.IOException | IllegalArgumentException failure) {
+                _modeSession.rejectIdentity();
+                modeFailure(failure);
+            }
+        }
+        if (client.gui.screen() == null && _modeSession.takePrompt()) {
+            client.gui.setScreen(new WorldModeScreen(selection -> {
+                if (client.getConnection() != connection || !inGame()) return;
+                try {
+                    if (_modeSession.select(connection, selection) != null) modeReady();
+                } catch (java.io.IOException failure) {
+                    modeFailure(failure);
+                }
+            }));
+        }
+    }
+
+    private void modeFailure(Exception failure) {
+        var store = _modeSession.store();
+        Debug.logMessage("DeepClef 保持待命。请检查" + (store == null ? "服务器地址" : store.file())
+                + " 后重进。原因：" + failure.getMessage());
+    }
+
+    private void modeReady() {
+        _memory.join();
+        Debug.logMessage("本世界已绑定" + worldMode().label + "。输入 @status 查看状态。");
+        startConfiguredIdleTask();
+    }
+
+    public void stopAutomation() {
+        _backgroundPaused = true;
+        _playerRoutine.interrupt();
+        _memory.cancelReview();
+        releaseAutomation(true);
+        if (_chatService != null) _chatService.pauseAfterStop();
+    }
+
+    public void resumeBackground() {
+        if (!_backgroundPaused) return;
+        _backgroundPaused = false;
+        startConfiguredIdleTask();
+    }
+
+    private void releaseAutomation(boolean stopPath) {
+        boolean hadActions = stopPath || _taskRunner.isActive() || DeepSeekAgent.isBusy();
+        _commandExecutor.cancelPending();
+        _boatRecoveryObserver.reset();
+        DeepSeekAgent.cancel();
+        _butler.releaseUser();
+        _messageSender.clearOnStop();
+        if (_taskRunner.isActive()) _taskRunner.disable();
+        if (hadActions) {
+            getClientBaritone().getPathingBehavior().forceCancel();
+            getClientBaritone().getInputOverrideHandler().clearAllKeys();
+        }
+        _inputControls.releaseAll();
+    }
+
     /**
      * Detects a save/server switch and drops every piece of bot state that
      * belonged to the previous world: the running {@code @ds} agent (its
@@ -273,16 +405,18 @@ public class AltoClef implements ModInitializer {
         net.minecraft.client.multiplayer.ClientLevel world = level();
         net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (world == _lastWorld && connection == _lastConnection) return;
+        backgroundMenu = null;
+        _playerRoutine.leaveWorld(connection != _lastConnection);
+        _scene.reset();
         boolean switching = _lastWorld != null || _lastConnection != null;
+        if (connection != _lastConnection) _memory.leave();
+        else { _memory.cancelReview(); _memory.clearObservation(); }
         _lastWorld = world;
         _lastConnection = connection;
         if (!switching) return; // first join of this game session
 
-        adris.altoclef.util.DeepSeekAgent.cancel();
-        _userTaskChain.cancel(this);
-        if (_taskRunner.getCurrentTaskChain() != null) {
-            _taskRunner.getCurrentTaskChain().stop(this);
-        }
+        releaseAutomation(false);
+        _cancelKeyDown = false;
         adris.altoclef.util.helpers.CombatPreferences.setStyle(
                 adris.altoclef.util.helpers.CombatPreferences.Style.AUTO);
         adris.altoclef.util.helpers.PvpCombat.reset(this);
@@ -295,7 +429,7 @@ public class AltoClef implements ModInitializer {
 
     private void onClientRenderOverlay(GuiGraphicsExtractor extractor) {
         _commandStatusOverlay.render(this, extractor);
-        DeepSeekThinkingOverlay.getInstance().render(extractor);
+        DeepSeekThinkingOverlay.getInstance().render(extractor, this);
     }
 
     private void initializeBaritoneSettings() {
@@ -508,6 +642,7 @@ public class AltoClef implements ModInitializer {
      * Run a user task
      */
     public void runUserTask(Task task, Runnable onFinish) {
+        if (!hasWorldMode()) return;
         _userTaskChain.runTask(this, task, onFinish);
     }
 

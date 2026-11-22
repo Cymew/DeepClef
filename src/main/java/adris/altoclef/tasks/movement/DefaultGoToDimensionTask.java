@@ -95,7 +95,7 @@ public class DefaultGoToDimensionTask extends Task {
     private Task goToOverworldFromNetherTask(AltoClef mod) {
         if (netherPortalIsClose(mod)) {
             setDebugState("Going to nether portal");
-            return new EnterNetherPortalTask(Dimension.NETHER);
+            return new EnterNetherPortalTask(Dimension.OVERWORLD);
         }
 
         Optional<BlockPos> closest = mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.NETHER);

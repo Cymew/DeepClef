@@ -22,6 +22,7 @@ public final class MountedControlListener implements AbstractGameEventListener {
     @Override
     public void onTick(TickEvent event) {
         if (event.getType() == TickEvent.Type.IN) {
+            if (!_mod.hasWorldMode()) return;
             // PathingBehavior can clear its forced keys on the first paused tick.
             MountedNavigation.applyInputs(_mod);
             // The vehicle ticks before its rider, so its direction is needed now.
@@ -40,8 +41,14 @@ public final class MountedControlListener implements AbstractGameEventListener {
     }
 
     @Override
+    public void onPlayerSprintState(baritone.api.event.events.SprintStateEvent event) {
+        var owner = adris.altoclef.tasks.movement.GetToXZTask.styledOwner(_mod);
+        if (owner != null) event.setState(_mod.getPlayer().input.keyPresses.sprint());
+    }
+
+    @Override
     public void onPlayerUpdate(PlayerUpdateEvent event) {
-        if (event.getState() == EventState.PRE) {
+        if (event.getState() == EventState.PRE && _mod.hasWorldMode()) {
             // LookBehavior (including its rideTick helper) may have set a later target.
             MountedNavigation.applyLook(_mod);
             ElytraNavigation.applyLook(_mod);

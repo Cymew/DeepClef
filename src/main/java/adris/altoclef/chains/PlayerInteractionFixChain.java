@@ -68,7 +68,7 @@ public class PlayerInteractionFixChain extends TaskChain {
                 || mod.getClientBaritone().getPathingBehavior().isPathing()
                 || mod.getEntityTracker().getHostiles().stream().anyMatch(entity -> entity.isAlive()
                 && entity.closerThan(mod.getPlayer(), 12) && EntityHelper.isAngryAtPlayer(mod, entity))) return;
-        maintainInteraction(mod);
+        if (!adris.altoclef.util.DeepSeekAgent.ownsVisibleMenu()) maintainInteraction(mod);
     }
 
     private float maintainInteraction(AltoClef mod) {
@@ -113,7 +113,7 @@ public class PlayerInteractionFixChain extends TaskChain {
         // Refresh inventory
         if (_generalDuctTapeSwapTimeout.elapsed()) {
             if (!mod.getControllerExtras().isBreakingBlock()) {
-                Debug.logMessage("Invalidated inventory cache (no slot clicks).");
+                Debug.logInternal("Periodic inventory cache refresh (no slot clicks).");
                 mod.getSlotHandler().refreshInventory();
                 _generalDuctTapeSwapTimeout.reset();
                 return Float.NEGATIVE_INFINITY;

@@ -99,6 +99,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
                         }
                     }
                 }
+                if (mod.playerRoutine().ownsActivity()) return Float.NEGATIVE_INFINITY;
                 _plan = Plan.FIND_WATER;
                 return 90;
             }

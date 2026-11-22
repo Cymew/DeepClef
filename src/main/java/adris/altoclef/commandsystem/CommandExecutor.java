@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 public class CommandExecutor {
@@ -12,6 +13,9 @@ public class CommandExecutor {
     private final HashMap<String, Command> _commandSheet = new HashMap<>();
     private final AltoClef _mod;
     private int _revision = 0;
+    private long _generation;
+
+    public void cancelPending() { _generation++; }
 
     public CommandExecutor(AltoClef mod) {
         _mod = mod;
@@ -59,7 +63,8 @@ public class CommandExecutor {
     }
 
     // This is how we "nest" command finishes so we can complete them in order.
-    private void executeRecursive(Command[] commands, String[] parts, int index, Runnable onFinish, Consumer<CommandException> getException) {
+    private void executeRecursive(Command[] commands, String[] parts, int index, Runnable onFinish, Consumer<CommandException> getException, long generation, BooleanSupplier stillActive) {
+        if (generation != _generation || !stillActive.getAsBoolean() || (_mod != null && !_mod.hasWorldMode())) return;
         if (index >= commands.length) {
             onFinish.run();
             return;
@@ -69,9 +74,9 @@ public class CommandExecutor {
         try {
             if (command == null) {
                 getException.accept(new CommandException("Invalid command:" + part));
-                executeRecursive(commands, parts, index + 1, onFinish, getException);
+                executeRecursive(commands, parts, index + 1, onFinish, getException, generation, stillActive);
             } else {
-                command.run(_mod, part, () -> executeRecursive(commands, parts, index + 1, onFinish, getException));
+                command.run(_mod, part, () -> executeRecursive(commands, parts, index + 1, onFinish, getException, generation, stillActive));
             }
         } catch (CommandException ae) {
             getException.accept(new CommandException(ae.getMessage() + "\nUsage: " + command.getHelpRepresentation(), ae));
@@ -79,7 +84,15 @@ public class CommandExecutor {
     }
 
     public void execute(String line, Runnable onFinish, Consumer<CommandException> getException) {
+        execute(line, onFinish, getException, () -> true);
+    }
+
+    public void execute(String line, Runnable onFinish, Consumer<CommandException> getException, BooleanSupplier stillActive) {
         if (!isClientCommand(line)) return;
+        if (_mod != null && !_mod.hasWorldMode()) {
+            getException.accept(new CommandException("当前世界尚未绑定模式。可手动游玩，重进后选择或检查模式配置。"));
+            return;
+        }
         line = line.substring(getCommandPrefix().length());
         // Run commands separated by ;
         String[] parts = line.split(";");
@@ -91,7 +104,7 @@ public class CommandExecutor {
         } catch (CommandException e) {
             getException.accept(e);
         }
-        executeRecursive(commands, parts, 0, onFinish, getException);
+        executeRecursive(commands, parts, 0, onFinish, getException, _generation, stillActive);
     }
 
     public void execute(String line, Consumer<CommandException> getException) {

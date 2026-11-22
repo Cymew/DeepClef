@@ -29,7 +29,7 @@ public class CollectCobblestoneTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
-        return new MineAndCollectTask(Items.COBBLESTONE, 1, new Block[]{Blocks.STONE, Blocks.COBBLESTONE}, MiningRequirement.WOOD);
+        return new MineAndCollectTask(Items.COBBLESTONE, _count, new Block[]{Blocks.STONE, Blocks.COBBLESTONE}, MiningRequirement.WOOD);
     }
 
     @Override

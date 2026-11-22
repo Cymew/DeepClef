@@ -37,6 +37,13 @@ public final class SwimNavigation {
     private final boolean surface, ascend, shoreExit;
     private final SwimInput input=new SwimInput();
     private final SwimJourney journey=new SwimJourney();
+    private Vec3 entryPoint, landingPoint;
+    private boolean touchedWater;
+    private int drySamples;
+    private String crossingPhase;
+    private final SurfaceSwim surfaceSwim = new SurfaceSwim();
+    private final ShoreCrossing.Progress bankProgress=new ShoreCrossing.Progress();
+    private final Set<BlockPos> failedLandings=new HashSet<>();
     private SwimRoutePlanner routeSearch, airSearch, surfaceSearch, diveSearch;
     private List<Vec3> surfaceEscape=List.of();
     private int surfaceSearchTick=-100, diveTick=-100;
@@ -58,6 +65,10 @@ public final class SwimNavigation {
         this(mod,goal,surface,ascend,false);
     }
     public SwimNavigation(AltoClef mod, BlockPos goal, boolean surface, boolean ascend, boolean shoreExit) {
+        this(mod,goal,surface,ascend,shoreExit,null);
+    }
+    public SwimNavigation(AltoClef mod, BlockPos goal, boolean surface, boolean ascend, boolean shoreExit, Vec3 entryPoint) {
+        this.entryPoint=entryPoint;
         this.player=mod.getPlayer(); this.world=mod.level(); this.goal=goal.immutable(); this.surface=surface; this.ascend=ascend;
         this.shoreExit=shoreExit;
         yaw=previousYaw=player.getYRot(); pitch=previousPitch=player.getXRot(); progressPosition=player.position();
@@ -79,9 +90,11 @@ public final class SwimNavigation {
     public static String status(AltoClef mod) {
         if(mod.getPlayer()==null)return "未进入世界。";
         return "氧气="+mod.getPlayer().getAirSupply()+"/"+mod.getPlayer().getMaxAirSupply()+"，游泳姿态="+mod.getPlayer().isSwimming()
+                +"，疾跑="+mod.getPlayer().isSprinting()+"，眼部浸水="+mod.getPlayer().isEyeInFluid(FluidTags.WATER)
                 +" | "+(ownsSwimming(mod)?current.message:"Swimming idle");
     }
-    private boolean protectedAir() {
+    private boolean protectedAir() { return protectedAir(player); }
+    static boolean protectedAir(LocalPlayer player) {
         if(player.getAbilities().invulnerable)return true;
         for(var effect:List.of(MobEffects.WATER_BREATHING,MobEffects.CONDUIT_POWER)) {
             var value=player.getEffect(effect);
@@ -108,14 +121,42 @@ public final class SwimNavigation {
         SwimTerrain terrain=new SwimTerrain(mod);
         Vec3 pos=player.position();
         var here=terrain.kind(player.blockPosition());
+        if(player.isInWater()) {
+            touchedWater=true;
+            drySamples=0;
+            if(entryPoint!=null) { entryPoint=null; bankProgress.reset(); }
+        }
+        if(entryPoint!=null) {
+            Vec3 live=terrain.waterSurface((int)Math.floor(entryPoint.x),(int)Math.floor(entryPoint.z),pos.y);
+            if(live==null || !ShoreCrossing.canStep(terrain,pos,live) || bankProgress.stalled(pos.distanceTo(live)))
+                return fail("入水步骤受阻，释放游泳控制，重新选择岸缘入口。");
+            crossing("入水", "向已确认的水面入口前进，等待实际接水。");
+            steerAtBank(live,false);
+            return Outcome.RUNNING;
+        }
         boolean bubble=here==SwimRoutePlanner.Kind.UP || here==SwimRoutePlanner.Kind.DOWN;
         // Vanilla replenishes air at the eyes, not merely when the feet touch a column.
         boolean eyesInBubble=world.getBlockState(BlockPos.containing(player.getEyePosition())).is(Blocks.BUBBLE_COLUMN);
         boolean breathing=!player.isUnderWater() || eyesInBubble || protectedAir();
         if(!player.isInWater() && player.onGround() && !refilling && !ascend && !reached(pos)) {
-            if(shouldHandOff(shoreExit,here))return finish(Outcome.SHORE,"已游到可站立岸边，交回陆路寻路。");
+            Vec3 support=shoreExit && touchedWater ? terrain.landing(player.blockPosition().getX(),player.blockPosition().getZ(),pos.y) : null;
+            if(touchedWater && (shouldHandOff(shoreExit,here) || support!=null && Math.abs(pos.y-support.y)<.12)) {
+                crossing("落脚", "确认连续稳定支撑。");
+                if(++drySamples>=3) return finish(Outcome.SHORE,"已游到可站立岸边，交回陆路寻路。");
+                return Outcome.RUNNING;
+            }
+            drySamples=0;
             if(requestTick-dryProbeTick>=20) {nearbyWater=terrain.hasNearbyWater(player.blockPosition());dryProbeTick=requestTick;}
             if(!nearbyWater && here!=SwimRoutePlanner.Kind.AIR)return fail("已远离可接入水体，原目标尚未到达；陆路请用 goto。");
+        }
+        if(!player.onGround()) drySamples=0;
+        // Automatic surface trips use a rolling body-relative corridor. If air is low or the
+        // head is submerged, the existing oxygen/ascent controller takes priority.
+        if(shoreExit && surface && player.isInWater() && !bubble && !eyesInBubble && !refilling && !reached(pos)
+                && (!player.isUnderWater() || player.getAirSupply()>90 && terrain.waterSurface(player.blockPosition().getX(),
+                player.blockPosition().getZ(),pos.y)!=null)) {
+            Outcome crossing=surfaceStep(terrain,pos);
+            if(crossing!=null) return crossing;
         }
         // Independent slices: a difficult air search must not starve the travel route.
         long airDeadline=System.nanoTime()+1_000_000;
@@ -153,7 +194,7 @@ public final class SwimNavigation {
         refilling=shouldRefill(refilling,ascend,breathing,protectedAir(),here,player.getAirSupply(),player.getMaxAirSupply(),escapeLength,speed);
         if(refilling && journey.phase()==SwimJourney.Phase.DIVING) {journey.requestSurface();resetTravelRoute();}
         if(refilling && breathing && (!ascend || !player.isUnderWater() || eyesInBubble)
-                && (!surface || here!=SwimRoutePlanner.Kind.WATER)) {
+                && (ascend || !surface || here!=SwimRoutePlanner.Kind.WATER)) {
             message="Refilling air before continuing.";
             if(player.getAirSupply()>=player.getMaxAirSupply()-4 || protectedAir()) {
                 if(ascend)return finish(Outcome.ARRIVED,"已抵达可呼吸位置并补充氧气。");
@@ -174,7 +215,8 @@ public final class SwimNavigation {
                 sneak=here==SwimRoutePlanner.Kind.DOWN || magmaBelow();
                 Vec3 centre=new Vec3(Math.floor(pos.x)+.5,pos.y,Math.floor(pos.z)+.5);
                 if(Math.hypot(pos.x-centre.x,pos.z-centre.z)>.17)steer(terrain,centre,false);
-                if(here==SwimRoutePlanner.Kind.AIR)jump=false;
+                if (ascend && player.isInWater() && !bubble && !eyesInBubble) jump=true;
+                else if(here==SwimRoutePlanner.Kind.AIR)jump=false;
                 if(here==SwimRoutePlanner.Kind.DOWN || magmaBelow())sneak=true;
                 return Outcome.RUNNING;
             }
@@ -247,16 +289,21 @@ public final class SwimNavigation {
                     routeSearch=null;
                 }
             }
-            message=surfaceTravel()?"Swimming along the surface before the final approach.":"Following 3D water route.";
+            message=surfaceTravel()?"水面寻路：正在对准下一段路线。":"Following 3D water route.";
             if(!follow(terrain,route)) {
                 message="Planning the next loaded water corridor.";
                 jump=surfaceTravel() && !breathing;
+                if (surfaceTravel() && surfaceCell!=null && player.isInWater()) {
+                    Vec3 next = ShoreCrossing.nextSurface(terrain,pos,goal);
+                    if (next!=null) steerAtBank(next,false);
+                }
                 // Enter the native swimming pose in verified open water while the longer search runs.
                 if(!player.isSwimming() && player.isUnderWater() && !surfaceTravel() && breathingOrReserve()) {
                     Vec3 ahead=new Vec3(goal.getX()+.5-pos.x,0,goal.getZ()+.5-pos.z).normalize().scale(.7).add(pos);
                     if(terrain.clear(pos,ahead))steer(terrain,ahead,true);
                 }
             }
+            if (surfaceTravel() && !refilling && !bubble && !eyesInBubble && forward && !reached(pos)) applySurfaceStroke(terrain);
         }
         if(magmaBelow())sneak=true;
         if(pos.distanceTo(progressPosition)>1.5) { progressPosition=pos; stalled=0; }
@@ -265,12 +312,85 @@ public final class SwimNavigation {
         if(stalled>420)return fail("水路受阻且无法继续推进，未确认到达；已交还生存保护。");
         return Outcome.RUNNING;
     }
+    private Outcome surfaceStep(SwimTerrain terrain,Vec3 pos) {
+        if(landingPoint!=null && (!landingPoint.equals(terrain.landing((int)Math.floor(landingPoint.x),(int)Math.floor(landingPoint.z),pos.y))
+                || !ShoreCrossing.canStep(terrain,pos,landingPoint)
+                || bankProgress.stalled(pos.distanceTo(landingPoint)))) {
+            failedLandings.add(BlockPos.containing(landingPoint));
+            landingPoint=null;
+            bankProgress.reset();
+            if(failedLandings.size()>=3) return fail("多处岸面未能登岸，交回普通导航。");
+        }
+        if(landingPoint==null) {
+            landingPoint=ShoreCrossing.exit(terrain,pos,goal,failedLandings);
+            if(landingPoint!=null) bankProgress.reset();
+        }
+        if(landingPoint!=null) {
+            crossing("登岸", "向有支撑和头部净空的岸面前进。");
+            steerAtBank(landingPoint,true);
+            return Outcome.RUNNING;
+        }
+        Vec3 ahead=ShoreCrossing.nextSurface(terrain,pos,goal);
+        if(ahead!=null) {
+            steerAtBank(ahead,false);
+            if (forward) applySurfaceStroke(terrain);
+            else crossing("转向", "对准下一段可通行水面。");
+            if(!bankProgress.stalled(ShoreCrossing.distance(pos,goal))) return Outcome.RUNNING;
+            return fail("表面游泳无实际进展，交回普通导航。");
+        }
+        // Surface travel at a wall can require a sideways detour. The original swimmer handles
+        // explicit XYZ/deep trips; this crossing only acts on relevant geometry near the body.
+        crossing("岸面受阻", "检查可通过的水面或落脚点。");
+        jump=true;
+        if(bankProgress.stalled(ShoreCrossing.distance(pos,goal))) return fail("找不到可通过的水面或上岸点。");
+        return Outcome.RUNNING;
+    }
+
+    private void applySurfaceStroke(SwimTerrain terrain) {
+        if (!player.isInWater()) return;
+        Vec3 pos = player.position();
+        Vec3 surfacePoint = terrain.waterSurface(player.getBlockX(),player.getBlockZ(),pos.y);
+        if (surfacePoint == null || magmaBelow()) {
+            jump = player.isUnderWater();
+            return;
+        }
+        var controls = surfaceSwim.forPlayer(player, terrain, surfacePoint, requestTick);
+        jump = controls.jump();
+        sneak = controls.sneak();
+        sprint = controls.sprint();
+        pitch = SwimRoutePlanner.turn(previousPitch, controls.pitch(), 12);
+        crossing(controls.phase().label, "沿已确认的水面路线前进。");
+    }
+
+    private void crossing(String phase, String detail) {
+        message = phase + "：" + detail;
+        if (shoreExit && !phase.equals(crossingPhase)) {
+            crossingPhase = phase;
+            adris.altoclef.Debug.logInternal("陆水交接 " + phase + " / 目标 " + goal.toShortString()
+                    + " / 实到 " + player.blockPosition().toShortString() + " / 接水 " + player.isInWater()
+                    + " / 着地 " + player.onGround() + " / 氧气 " + player.getAirSupply());
+        }
+    }
+
+    private void steerAtBank(Vec3 aim,boolean climbing) {
+        Vec3 delta=aim.subtract(player.position());
+        float target=(float)Math.toDegrees(Math.atan2(-delta.x,delta.z));
+        yaw=SwimRoutePlanner.turn(yaw,target,18);
+        pitch=SwimRoutePlanner.turn(pitch,climbing?-14:0,10);
+        forward=Math.abs(Mth.wrapDegrees(target-yaw))<60;
+        jump=climbing && player.isInWater();
+        sneak=false;
+        sprint=false;
+    }
     private boolean reached(Vec3 p) {
+        if (shoreExit && (player.blockPosition().getX() != goal.getX() || player.blockPosition().getZ() != goal.getZ())) return false;
         return atGoal(p,goal,surface);
     }
     private boolean surfaceTravel() {return surface || journey.phase()==SwimJourney.Phase.SURFACE;}
     private static BlockPos surfaceCell(SwimTerrain t,BlockPos feet) {
         for(BlockPos p:List.of(feet,feet.above(),feet.below()))if(t.kind(p)==SwimRoutePlanner.Kind.SURFACE)return p;
+        if (t.water(feet) && t.water(feet.above()) && t.kind(feet.above(2))==SwimRoutePlanner.Kind.SURFACE)
+            return feet.above(2);
         return null;
     }
     private void resetTravelRoute() {route=List.of();routeSearch=diveSearch=null;routeTick=diveTick=-100;}
@@ -394,7 +514,9 @@ public final class SwimNavigation {
         // Crouching on a bank prevents stepping off into the water in the first place.
         return inWater && !surface && heightDelta<-.45;
     }
-    private boolean magmaBelow() {
+    private boolean magmaBelow() { return magmaBelow(player); }
+    static boolean magmaBelow(LocalPlayer player) {
+        var world = player.level();
         BlockPos p=player.blockPosition();
         for(int i=0;i<=2;i++)if(world.hasChunkAt(p.below(i)) && world.getBlockState(p.below(i)).is(Blocks.MAGMA_BLOCK))return true;
         return false;

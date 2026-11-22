@@ -74,7 +74,7 @@ public class DeepSeekThinkingOverlay {
         return !rawLines.isEmpty() || !thinkingBuffer.isEmpty() || !answerBuffer.isEmpty() || !status.isEmpty();
     }
 
-    public void render(GuiGraphicsExtractor graphics) {
+    public void render(GuiGraphicsExtractor graphics, adris.altoclef.AltoClef mod) {
         // 与原版 HUD 一致：F1（keyToggleGui → Hud.toggle()）隐藏 HUD 时，思考叠加层也一起隐藏。
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.gui != null && minecraft.gui.hud != null && minecraft.gui.hud.isHidden()) {
@@ -83,7 +83,11 @@ public class DeepSeekThinkingOverlay {
         float scale;
         List<String> lines;
         String statusLine;
-        synchronized (this) {
+        if (mod.getPlayer() != null && mod.worldMode() == adris.altoclef.mode.WorldMode.PLAYER && !adris.altoclef.util.DeepSeekAgent.isBusy()) {
+            scale = overlayScale();
+            statusLine = "DeepClef · 玩家";
+            lines = mod.playerRoutine().overlayLines(mod);
+        } else synchronized (this) {
             if (!hasContent()) return;
             scale = overlayScale();
             lines = new ArrayList<>(rawLines);

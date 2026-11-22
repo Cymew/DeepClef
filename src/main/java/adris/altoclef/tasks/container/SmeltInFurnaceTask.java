@@ -89,21 +89,9 @@ public class SmeltInFurnaceTask extends ResourceTask {
     protected void onResourceStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(Blocks.FURNACE);
         mod.getBehaviour().pop();
-        // Close furnace screen
-        ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
-        if (!cursorStack.isEmpty()) {
-            Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().handleInventoryMouseClick(slot, 0, ContainerInput.PICKUP));
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
-                mod.getSlotHandler().handleInventoryMouseClick(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-            }
-            Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-            // Try throwing away cursor slot if it's garbage
-            garbage.ifPresent(slot -> mod.getSlotHandler().handleInventoryMouseClick(slot, 0, ContainerInput.PICKUP));
-            mod.getSlotHandler().handleInventoryMouseClick(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-        } else {
-            StorageHelper.closeScreen();
-        }
+        // Vanilla returns the carried stack when the menu closes, including on interruption.
+        if (mod.getPlayer() != null && mod.getPlayer().containerMenu instanceof FurnaceMenu)
+            mod.getPlayer().closeContainer();
     }
 
     @Override
@@ -251,23 +239,8 @@ public class SmeltInFurnaceTask extends ResourceTask {
             }
             if (!output.isEmpty()) {
                 setDebugState("Receiving Output");
-                // Ensure our cursor is empty/can receive our item
-                ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-                if (!ItemHelper.canStackTogether(output, cursor)) {
-                    Optional<Slot> toFit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
-                    if (toFit.isPresent()) {
-                        mod.getSlotHandler().handleInventoryMouseClick(toFit.get(), 0, ContainerInput.PICKUP);
-                        return null;
-                    } else {
-                        // Eh screw it
-                        if (ItemHelper.canThrowAwayStack(mod, cursor)) {
-                            mod.getSlotHandler().handleInventoryMouseClick(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
-                            return null;
-                        }
-                    }
-                }
-                // Pick up
-                mod.getSlotHandler().handleInventoryMouseClick(FurnaceSlot.OUTPUT_SLOT, 0, ContainerInput.PICKUP);
+                // Transfer directly into inventory so target completion never strands the output on the cursor.
+                mod.getSlotHandler().handleInventoryMouseClick(FurnaceSlot.OUTPUT_SLOT, 0, ContainerInput.QUICK_MOVE);
                 return null;
                 // return new MoveItemToSlotTask(new ItemTarget(output.getItem(), output.getCount()), toMoveTo.get(), mod -> FurnaceSlot.OUTPUT_SLOT);
             }

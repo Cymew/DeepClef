@@ -101,7 +101,7 @@ Settings live in `.minecraft/versions/<version>/altoclef/altoclef_settings.json`
 | `deepseekMaxTokens` | `4096` | Max output tokens per request |
 | `deepseekTimeoutSeconds` | `300` | HTTP timeout |
 | `deepseekCompactionThreshold` | `0.8` | Fraction of context window that triggers automatic compaction |
-| `deepseekMaxSteps` | `60` | Max planning/action steps per `@ds` run |
+| `deepseekMaxSteps` | `160` | Foreground model rounds per `@ds` run (1–400). A tool batch counts once. |
 | `deepseekOverlayScale` | `0.75` | Thinking overlay font scale |
 
 Conversation history is stored per world/save under the altoclef data directory and restored when you reconnect.
