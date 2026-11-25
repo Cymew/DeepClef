@@ -159,6 +159,7 @@ public class MineAndCollectTask extends ResourceTask {
 
     private static class MineOrCollectTask extends AbstractDoToClosestObjectTask<Object> {
 
+        private final Set<BlockPos> verifiedTrunks = new HashSet<>();
         private final Block[] _blocks;
         private final ItemTarget[] _targets;
         private final Set<BlockPos> _blacklist = new HashSet<>();
@@ -209,7 +210,7 @@ public class MineAndCollectTask extends ResourceTask {
                 closestBlock = mod.getBlockTracker().getNearestTracking(pos, check -> {
                     if (_gatheringDirt && (DirtMiningTerrain.supportsPlayer(feet, check) || _retryAfter.containsKey(check))) return false;
                     if (_blacklist.contains(check) || mod.getBlockTracker().unreachable(check)) return false;
-                    return WorldHelper.canBreak(mod, check);
+                    return !adris.altoclef.util.HomeArea.protectedAt(check) && LocalTimber.natural(mod,check,verifiedTrunks) && WorldHelper.canBreak(mod, check);
                 }, _blocks);
             }
 
@@ -348,7 +349,7 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof BlockPos b) {
                 if (_blacklist.contains(b) || _gatheringDirt && (_retryAfter.containsKey(b)
                         || DirtMiningTerrain.supportsPlayer(mod.getPlayer().blockPosition(), b))) return false;
-                return mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
+                return mod.getBlockTracker().blockIsValid(b, _blocks) && !adris.altoclef.util.HomeArea.protectedAt(b) && LocalTimber.natural(mod,b,verifiedTrunks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {
                 if (!drop.isAlive()) return false;

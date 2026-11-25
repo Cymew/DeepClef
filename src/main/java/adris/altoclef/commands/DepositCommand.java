@@ -34,6 +34,15 @@ public class DepositCommand extends Command {
 
     @Override
     protected void call(AltoClef mod, ArgParser parser) throws CommandException {
+        String[] args = parser.getArgUnits();
+        if ((args.length == 1 && !args[0].startsWith("[")) || (args.length == 2 && args[1].equalsIgnoreCase("all"))) {
+            var selection = ItemList.parseRemainder(args[0]).items[0];
+            var targets = StorageHelper.getAllInventoryItemsAsTargets(slot ->
+                    selection.matches(StorageHelper.getItemStackInSlot(slot).getItem()));
+            if (targets.length == 0) { mod.log("背包内没有该物品"); finish(); return; }
+            mod.runUserTask(new StoreInAnyContainerTask(false, targets), completion());
+            return;
+        }
         ItemList itemList = parser.get(ItemList.class);
         ItemTarget[] items;
         if (itemList == null) {

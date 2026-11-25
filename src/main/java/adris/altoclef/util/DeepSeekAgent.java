@@ -134,7 +134,7 @@ public class DeepSeekAgent {
             + "  opendoor：收到“走过去，把门打开”直接单独执行。收到“已确认目标门打开。”或“看见目标门已经打开。”即完成开门，\n"
             + "  直接报告门已打开；若还有进屋等要求，接着执行。无需截图、look、查方块或再次开门。\n"
             + "  get <资源名> [数量]（获取物品）、food <数量>（收集食物）、meat <数量>（收集肉）、\n"
-            + "  equip <leather|iron|gold|diamond|netherite>（穿整套护甲）、deposit [物品]（存进附近容器）、\n"
+            + "  equip <leather|iron|gold|diamond|netherite>（穿整套护甲）。清理所有用不上的东西时先看库存，保留食物、装备和任务材料，对选出的每类执行 deposit <物品> all，一次存完多组；仅在明确数量时用 deposit <物品> <数量>。裸 deposit 用于存全部非工具装备。明确砍树或新采原木必须用 get harvest <具体原木名> <新增数量> <作业半径1至128> [距家最少格数]；用户指定离家500格时最后一项必须填500。先到符合用户距离的地点，整个圆区须在允许区域内。有家的范围先执行 protecthome <x1> <z1> <x2> <z2> 保存禁拆区，沿用本档已知坐标。区域内无树时换另一处合规区域，严禁改用普通 get 或箱子补数。单纯需要材料可就近取材；明确要求从仓库取用则去指定箱子取。、\n"
             + "  goto <x z>|<维度名>（长途移动，只给两个坐标；goto nether 会走到/浇筑下界传送门）、follow <玩家>、bed（放床设置重生点/睡觉）、\n"
             + "  portal [cast]（单桶浇筑下界传送门：主世界只需一个水桶+附近岩浆；开槽引水后固定水源，用同一个桶逐次运岩浆，浅池补底、深池复用底边，收水后点火，不需要钻石镐；cast 就地浇筑）、\n"
             + "  punk <玩家名> [auto|sword|bow|spear]（PvP 击杀指定玩家，可指定攻击方式；目标必须在视野内，仅限允许PvP的服务器）、\n"
@@ -183,6 +183,12 @@ public class DeepSeekAgent {
     private String memoryContext = "";
     private String seedContext = "";
     private boolean shearingRequested;
+    static boolean freshTimber(String instruction) {
+        return instruction != null && instruction.matches("(?is).*(?:砍|伐|新采|採伐|chop|fell).{0,32}(?:树|木|樹|tree|log).*");
+    }
+    static boolean plainTimberGet(String command) {
+        return command.matches("(?i)get\\s+(?:minecraft:)?(?:logs?|wood|[a-z_]+_(?:log|wood))(?:\\s+.*)?");
+    }
     static boolean requestsShearing(String instruction) {
         String text = instruction.toLowerCase(Locale.ROOT);
         return text.matches("(?s).*(剪.{0,16}(羊|毛)|(羊|羊毛).{0,16}剪|\\bshear(?:s|ing)?\\b).*");
@@ -1222,6 +1228,10 @@ public class DeepSeekAgent {
         // executing ds from within ds would replace this agent and strand its tool callback.
         String[] parts = command.split(";", -1);
         for (String part : parts) {
+            if ((freshTimber(originalInstruction) || freshTimber(latestInstruction)) && plainTimberGet(part.strip())) {
+                result.accept("用户要求新砍原木。抵达合规林地后使用 get harvest <原木> <新增数量> <半径>。");
+                return;
+            }
             if (shearingRequested && getsWool(part.strip())) {
                 result.accept("当前指令指定剪毛。用 entities(keyword=sheep) 的目标引用，再用 use_target 和持剪刀的手；get 羊毛可能杀羊。");
                 return;
@@ -1291,6 +1301,7 @@ public class DeepSeekAgent {
         final String finalCommand = command;
         long generation = commandGeneration;
         var getCommand = mod.getCommandExecutor().get("get") instanceof adris.altoclef.commands.GetCommand get ? get : null;
+        final long priorHarvest = getCommand == null ? 0 : getCommand.harvestRevision();
         final long priorGetFailure = getCommand == null ? 0 : getCommand.getSmithingFailureRevision();
         AtomicBoolean completed = new AtomicBoolean(false);
         java.util.concurrent.atomic.AtomicReference<java.util.concurrent.ScheduledFuture<?>> watchdogRef = new java.util.concurrent.atomic.AtomicReference<>();
@@ -1305,7 +1316,7 @@ public class DeepSeekAgent {
         try {
             mod.getCommandExecutor().execute(mod.getModSettings().getCommandPrefix() + finalCommand,
                     () -> complete.accept(getCommand != null && getCommand.getSmithingFailureRevision() != priorGetFailure
-                            ? "命令失败: " + getCommand.getSmithingFailure() : "命令完成: " + finalCommand),
+                            ? "命令失败: " + getCommand.getSmithingFailure() : getCommand != null && getCommand.harvestRevision() != priorHarvest ? getCommand.harvestReceipt() : "命令完成: " + finalCommand),
                     ex -> complete.accept("命令失败: " + ex.getMessage()),
                     () -> commandGeneration == generation && !cancelled);
         } catch (Throwable t) {

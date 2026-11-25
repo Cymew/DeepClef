@@ -242,6 +242,16 @@ public final class PlayerDecisionsRegression {
         check(shared.reserve(1, 0, true) == null);
         check(shared.reserve(2, 200_000 - 128 - PlayerDecisions.OUTPUT_LIMIT) != null && shared.tokens() == 1_000_000);
         check(shared.reserve(3, 0) == null && shared.reserve(3_600_000, 100, true) != null);
+        var area = new HomeArea(176,208,130,172);
+        var edge = new net.minecraft.core.BlockPos(130,-20,208);
+        check(area.atLeast(edge.west(500),500) && !area.atLeast(edge.west(499),500));
+        check(area.contains(edge) && !area.contains(edge.west()));
+        check(adris.altoclef.tasks.resources.LocalTimber.within(edge,edge.east(48).above(12),48));
+        check(!adris.altoclef.tasks.resources.LocalTimber.within(edge,edge.east(48).north(),48));
+        check(DeepSeekAgent.freshTimber("去五百格外砍128个樱花木"));
+        check(DeepSeekAgent.plainTimberGet("get cherry_log 128"));
+        check(!DeepSeekAgent.plainTimberGet("get harvest cherry_log 128 48"));
+        check(!DeepSeekAgent.freshTimber("从箱子里取木头"));
         multiplayerConversation();
         return checks;
     }

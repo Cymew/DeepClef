@@ -17,6 +17,7 @@ public class AltoClefCommands {
                 new GiveCommand(),
                 new EquipCommand(),
                 new DepositCommand(),
+                new ProtectHomeCommand(),
                 new StashCommand(),
                 new GotoCommand(),
                 new OpenDoorCommand(),

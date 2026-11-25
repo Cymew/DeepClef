@@ -201,7 +201,7 @@ public class AltoClef implements ModInitializer {
             // If we should run an idle command...
             startConfiguredIdleTask();
             // Don't break blocks or place blocks where we are explicitly protected.
-            getExtraBaritoneSettings().avoidBlockBreak(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
+            getExtraBaritoneSettings().avoidBlockBreak(blockPos -> _settings.isPositionExplicitlyProtected(blockPos) || adris.altoclef.util.HomeArea.protectedAt(blockPos));
             getExtraBaritoneSettings().avoidBlockPlace(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
         });
 
@@ -265,6 +265,7 @@ public class AltoClef implements ModInitializer {
             return;
         }
         _memory.tick();
+        adris.altoclef.util.HomeArea.bind(this);
         _scene.tick(this);
 
         // TODO: should this go here?

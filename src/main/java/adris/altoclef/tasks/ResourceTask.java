@@ -161,7 +161,19 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(Arrays.stream(_itemTargets).reduce(new Item[0], (items, target) -> ArrayUtils.addAll(items, target.getMatches()), ArrayUtils::addAll));
             if (!containersWithItem.isEmpty()) {
                 ContainerCache closest = containersWithItem.stream().min(StlHelper.compareValues(container -> container.blockPosition().distSqr(BlockPos.containing(mod.getPlayer().position())))).get();
-                if (closest.blockPosition().closerThan(BlockPos.containing(mod.getPlayer().position()), mod.getModSettings().getResourceChestLocateRange())) {
+                double range = mod.getModSettings().getResourceChestLocateRange();
+                // Cheap local materials seldom justify a long round trip. For other mined
+                // resources prefer storage only when it competes with a known local source.
+                boolean timber = Arrays.stream(_itemTargets).flatMap(t -> Arrays.stream(t.getMatches()))
+                        .anyMatch(adris.altoclef.tasks.resources.LocalTimber::rawLog);
+                if (timber) range = Math.min(range, 64);
+                if (_mineIfPresent != null && _mineIfPresent.length > 0) {
+                    var nearby = mod.getBlockTracker().getNearestTracking(p -> mod.level().hasChunkAt(p)
+                            && !adris.altoclef.util.HomeArea.protectedAt(p) && !mod.getModSettings().isPositionExplicitlyProtected(p)
+                            && WorldHelper.canBreak(mod,p), _mineIfPresent);
+                    if (nearby.isPresent()) range = Math.min(range, 12 + 2 * Math.sqrt(nearby.get().distSqr(mod.getPlayer().blockPosition())));
+                }
+                if (closest.blockPosition().closerThan(mod.getPlayer().blockPosition(), range)) {
                     _currentContainer = closest;
                 }
             }
